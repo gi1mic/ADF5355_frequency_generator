@@ -34,10 +34,35 @@ bootloader for ease of programming.
 The Arduino IDE (V1.8.13) was configured for a generic SMT32F1xx
 
 Blue pill Pins:
-Encoder 1 Clk - PB11, DT - PB10, SWT - PB1, + - 3.3V, GND - GND
-Encoder 2 Clk - PA3, DT - PA2, SWT - PA1, + - 3.3V, GND - GND
-I2C OLED  SDA - PB7, SCL - PB6, + - 3.3V, GND - GND
-ADF5355  CLK-PA5, MUX-PB0, LE-PA4, DAT-PA7, 3.3V - 3.3V, GND - GND, Barrel Jack - 6V (or 5V on the Bluepill)
+Encoder 1 
+    Clk - PB11 
+    DT  - PB10
+    SWT - PB1
+    +   - 3.3V
+    GND - GND
+    
+Encoder 2
+    Clk - PA3
+    DT  - PA2
+    SWT - PA1
+    +   - 3.3V
+    GND - GND
+    
+I2C OLED
+    SDA - PB7
+    SCL - PB6
+    +   - 3.3V
+    GND - GND
+    
+ADF5355
+    CLK - PA5
+    MUX - PB0
+    LE  - PA4
+    DAT - PA7
+    3.3V - 3.3V
+    GND - GND
+    Barrel Jack - 6V or 5V from the Bluepill
+    
 
 
 
