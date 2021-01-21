@@ -4,13 +4,15 @@ ADF5355 Bluepill Frequency Generator
 
 Code to use an ADF5355 as a signal generator from 52 to 13600 MHz
 
-Based on that of DD7LP and GM8BJF (See below) with minor 
-modifications by GI1MIC to run on a STM32F103CB/C8 Bluepill.
+Based on that of GM8BJF (https://github.com/gm8bjf/ADF5355_sig_gen) 
+which in-turn was based on code from DD7LP.
 
-The code changes were originally required because the original code
+Now with minor modifications by GI1MIC to run on a STM32F103CB/C8 Bluepill.
+
+These code changes were originally required because the provided code
 kept locking up on SPI writes.
  
-The following code is based on using the onboard ADF5355 25Mhz clock
+The code is based on using the onboard ADF5355 25Mhz clock
 
 Since the 25Mhz clock on my board was closer to 24.99395Mhz I added
 a calibration feature. The current calibration offset is shown
@@ -21,7 +23,7 @@ release when the display becomes active. Then adjust as required -
 a minus offset is subtracted from your crystal while a positive offset
 is added. 
 
-The offset is stored in internal eeprom.
+The offset is stored in internal EEPROM.
 
 Calibration can be accomplished  against a known receiver (higher the
 known RX frequency the better)
