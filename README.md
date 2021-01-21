@@ -27,7 +27,7 @@ The Arduino IDE (V1.8.13) was configured for a generic SMT32F1xx
 ## Blue pill Pins:
 **Encoder 1**
 
-Clk - PB11 
+-     Clk - PB11 
 -     DT  - PB10
 -     SWT - PB1
 -     +   - 3.3V
