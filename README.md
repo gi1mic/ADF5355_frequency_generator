@@ -2,7 +2,7 @@
 
 ADF5355 Bluepill Frequency Generator
 
-Code to use an ADF5355 as a signal generator from 52 to 13600 MHz
+Code to use an ADF5355 as a signal generator from 52 to 13600 MHz 
 
 The code is based on that of GM8BJF (https://github.com/gm8bjf/ADF5355_sig_gen) which in-turn was based on code from DD7LP.
 

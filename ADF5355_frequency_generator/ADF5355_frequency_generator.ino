@@ -1,7 +1,7 @@
 // Code to use an ADF5355 as a signal generator from 52 to 13600 MHz
 //
 // Based on that of DD7LP and GM8BJF (See below) with minor
-// modifications by GI1MIC to run on a STM32F103CB/C8 Bluepill.
+// modifications by GI1MIC to run on a STM32F103CB/C8 Bluepill. 
 //
 // The code changes were originally required because the original code
 // kept locking up on SPI writes.
