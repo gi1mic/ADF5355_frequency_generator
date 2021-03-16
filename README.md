@@ -20,6 +20,8 @@ Calibration can be accomplished  against a known receiver (higher the RX frequen
 
 Other than that one rotary encoder changes the frequency up/down while pressing it jumps to preset frequencies. The other sets tuning step size while pressing it sets output level between -5dBm to +2dBm.
 
+At the request of VE7XDT I added a long press option to the frequency adjustment encoder. This toggles output pin B4 to select between an internal or external clock source using external hardware.
+
 The Bluepill board I use is preprogrammed with the maple DFU boot-loader which greatly simplifies programming from the Arduino IDE.
 
 The Arduino IDE (V1.8.13) was configured for a generic SMT32F1xx and the upload method set to "Maple DFU Bootloader 2.0".

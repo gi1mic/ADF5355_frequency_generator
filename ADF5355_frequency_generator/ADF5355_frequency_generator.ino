@@ -1,7 +1,7 @@
 // Code to use an ADF5355 as a signal generator from 52 to 13600 MHz
 //
 // Based on that of DD7LP and GM8BJF (See below) with minor
-// modifications by GI1MIC to run on a STM32F103CB/C8 Bluepill. 
+// modifications by GI1MIC to run on a STM32F103CB/C8 Bluepill.
 //
 // The code changes were originally required because the original code
 // kept locking up on SPI writes.
@@ -34,10 +34,12 @@
 // ADF5355  CLK-PA5, MUX-PB0, LE-PA4, DAT-PA7, 3.3V - 3.3V, GND - GND, Barrel Jack - 6V (or 5V on the Bluepill)
 //
 //
+// Version 2.1 At the request of VE7XDT I added a long press option to the frequency adjustment encoder. 
+//             This toggles output pin B4 to select between an internal or external clock source using external hardware.
 //
 // Version 2.0 Updated code to use U8g2lib display library. This supports a greater range of displays.
 //             Current code supports a 1.3" 64x128 oled display and a SH1106 chip
-// 
+//
 // Version 1.0 used a 0.98" 64x128 oled display with a SSD1306 chip
 
 
@@ -87,7 +89,9 @@ unsigned char encoder_A2_prev = 0;
 const int switch1 = PB1;
 const int switch2 = PA1;
 
-boolean mrk1, mrk1_old, mrk2, mrk2_old;
+const int clockSelect = PB4;      // Output for external clock select
+
+boolean mrk1, mrk1_old, mrk2, mrk2_old, externalClk = 0;
 
 int press = 0;
 int cnt_step = 6;
@@ -357,6 +361,9 @@ void setup() {
   pinMode(pin_A2, INPUT_PULLUP);
   pinMode(pin_B2, INPUT_PULLUP);
 
+  pinMode(clockSelect, OUTPUT);
+  digitalWrite(clockSelect, LOW);
+
   pinMode(switch1, INPUT_PULLUP);     // 2 fix channel select
   pinMode(switch2, INPUT_PULLUP);     // 10 power select
   pinMode(ADF5355_MUX, INPUT_PULLUP);    // lock/unlock
@@ -389,6 +396,19 @@ void setup() {
     delay(3000);
   }
   refin -= xtalOffset;
+
+  // Update clock source on display
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(64, 0, 128, 12);
+  u8g2.setDrawColor(1);
+  u8g2.setCursor( 100, 7);
+  if (digitalRead(clockSelect)) {
+    u8g2.print("Ext");
+  } else {
+    u8g2.print("Int");
+  }
+  u8g2.sendBuffer();
+
 }
 
 // *********************** Subroutine: update Display  **************************
@@ -543,7 +563,7 @@ void loop()
 
   if (mrk1 != mrk1_old) {
     u8g2.setDrawColor(0);
-    u8g2.drawBox(0, 0, 128, 12);
+    u8g2.drawBox(0, 0, 64, 12);
     u8g2.setDrawColor(1);
     u8g2.setCursor( 0, 7);
     if (digitalRead(ADF5355_MUX) == HIGH)
@@ -558,7 +578,6 @@ void loop()
   rotary_enc();
   if (Freq != Freq_Old) {
     updateDisplay();   //
-    // delayMicroseconds(250);
     SetFreq(Freq);
     updateDisplay();   // // needs second update to stop encoders interacting ???///
     Freq_Old = Freq;
@@ -653,42 +672,59 @@ void rotary_enc2()
 /////////////////////////// Subroutine: Fixed frequency select ////////////////////////////
 void fixfrq_select()
 {
-  press = digitalRead(switch1);
-  if (press == LOW)
-  {
+  unsigned long pressedTime;
 
-    if (cnt_fix == 0) {
-      Freq = 5200000;  // 52.0 MHz
+  if (digitalRead(switch1) == LOW)
+  { pressedTime = millis();
+    while (digitalRead(switch1) == LOW) {
+      delay(10);
+    };      // Wait for release
+    if ((millis() - pressedTime) > 500) {                  // Long press delay
+      digitalWrite(clockSelect, !digitalRead(clockSelect));;     // Invert output
+      u8g2.setDrawColor(0);
+      u8g2.drawBox(64, 0, 128, 12);
+      u8g2.setDrawColor(1);
+      u8g2.setCursor( 100, 7);
+      if (digitalRead(clockSelect)) {
+        u8g2.print("Ext");
+      } else {
+        u8g2.print("Int");
+      }
+      u8g2.sendBuffer();
+    } else {
+      if (cnt_fix == 0) {                                  // Short press
+        Freq = 5200000;  // 52.0 MHz
+      }
+      else if (cnt_fix == 1) {
+        Freq = 7010000;  // 70.1 MHz
+      }
+      else if (cnt_fix == 2) {
+        Freq = 14420000;  // 144.2 MHz
+      }
+      else if (cnt_fix == 3) {
+        Freq = 43290000;  // 432.9 MHz
+      }
+      else if (cnt_fix == 4) {
+        Freq = 129690000;  // 1296.9 MHz
+      }
+      else if (cnt_fix == 5) {
+        Freq = 232090000;  // 2320.9 MHz
+      }
+      else if (cnt_fix == 6) {
+        Freq = 345610000;  // 3456.1 MHz
+      }
+      else if (cnt_fix == 7) {
+        Freq = 576050000;  // 5760.5 MHz
+      }
+      else if (cnt_fix == 8) {
+        Freq = 1036810000;  // 10368.1  MHz
+      }
+      cnt_fix = cnt_fix + 1;
+      if (cnt_fix == 9) {
+        cnt_fix = 0 ;
+      }
+      delay(300);
     }
-    else if (cnt_fix == 1) {
-      Freq = 7010000;  // 70.1 MHz
-    }
-    else if (cnt_fix == 2) {
-      Freq = 14420000;  // 144.2 MHz
-    }
-    else if (cnt_fix == 3) {
-      Freq = 43290000;  // 432.9 MHz
-    }
-    else if (cnt_fix == 4) {
-      Freq = 129690000;  // 1296.9 MHz
-    }
-    else if (cnt_fix == 5) {
-      Freq = 232090000;  // 2320.9 MHz
-    }
-    else if (cnt_fix == 6) {
-      Freq = 345610000;  // 3456.1 MHz
-    }
-    else if (cnt_fix == 7) {
-      Freq = 576050000;  // 5760.5 MHz
-    }
-    else if (cnt_fix == 8) {
-      Freq = 1036810000;  // 10368.1  MHz
-    }
-    cnt_fix = cnt_fix + 1;
-    if (cnt_fix == 9) {
-      cnt_fix = 0 ;
-    }
-    delay(300);
   }
 }
 
