@@ -1,11 +1,11 @@
 // Code to use an ADF5355 as a signal generator from 52 to 13600 MHz
 //
-// Based on that of DD7LP and GM8BJF (See below) with minor 
+// Based on that of DD7LP and GM8BJF (See below) with minor
 // modifications by GI1MIC to run on a STM32F103CB/C8 Bluepill.
 //
 // The code changes were originally required because the original code
 // kept locking up on SPI writes.
-// 
+//
 // The following code is based on using the onboard ADF5355 25Mhz clock
 //
 // Since the 25Mhz clock on my board was closer to 24.99395Mhz I added
@@ -15,7 +15,7 @@
 // To change the offset, press the frequency switch during power on and
 // release when the display becomes active. Then adjust as required -
 // a minus offset is subtracted from your crystal while a positive offset
-// is added. 
+// is added.
 //
 // The offset is stored in internal eeprom.
 //
@@ -35,6 +35,11 @@
 //
 //
 //
+// Version 2.0 Updated code to use U8g2lib display library. This supports a greater range of displays.
+//             Current code supports a 1.3" 64x128 oled display and a SH1106 chip
+// 
+// Version 1.0 used a 0.98" 64x128 oled display with a SSD1306 chip
+
 
 //***********************************************************************************************************************************************
 //*******Code to use an ADF5355 as a signal generator from 52 to 13600 MHz based on that of DD7LP Christian Petersen for the ADF4351, (See ******
@@ -50,17 +55,19 @@
 // Achtung, kommerzielle Verwertung diese Software ist nicht gestattet bedarf der schriftlichen Zustimmmmung der Autoren, bzw Programmierer *****
 //***********************************************************************************************************************************************
 
-#include <SPI.h>
 #include <RotaryEncoder.h>   //************https://github.com/mathertel/RotaryEncoder/blob/master/RotaryEncoder.h
-#include <Wire.h>            // I2C library //
-#include <Adafruit_SSD1306.h>  // device driver for 128x64 SPI/I2C
-#include <Adafruit_GFX.h>               //************** https://github.com/adafruit/Adafruit-GFX-Library
+#include <U8g2lib.h>         // *** Install from library manager *****//
+#ifdef U8X8_HAVE_HW_SPI
+#include <SPI.h>
+#endif
+#ifdef U8X8_HAVE_HW_I2C
+#include <Wire.h>
+#endif
 #include <EEPROM.h>
 
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-#define OLED_RESET -1   // Reset pin # (or -1 if sharing Arduino reset pin)
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+// Change the following for your display. See the u8g2 library wiki oe examples for options.
+U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, PB6, PB7);
+
 
 unsigned long currentTime;
 unsigned long loopTime;
@@ -108,7 +115,7 @@ int outPegel = mdbm;       // Ausgangspegel beim start = -4 dBm
 ///////////////////////// Subroutine: Set Frequency ADF5355 ///////////////////////////
 void SetFreq(long Frequ)     // Freq hier lokal oben global
 {
-  //Initialisation sequence
+  //Initialization sequence
   ConvertFreq(Reg);
   Write_ADF_Reg(12);
   Write_ADF_Reg(11);
@@ -154,30 +161,25 @@ void ConvertFreq(unsigned long R[])
 ////  Declare variables for registers/////
 {
   // PLL-Reg-R0         =  32bit
-  //   Registerselect        4bit
   //  int N_Int = 92;       // 16bit
   int Prescal = 0;         // 1bit geht nicht ??? it does not work
   int Autocal = 1;          //1 bit
   //  reserved           // 10bit
 
   // PLL-Reg-R1         =  32bit
-  //   Registerselect        4bit
   //   int FRAC1 = 10;       // 24 bit
   //   reserved              // 4bit
 
   // PLL-Reg-R2         =  32bit
-  //    Registerselect        4bit
   int M_Mod2 = 16383;            // 14 bit
   //    int Frac2 = 0;            // 14 bit
 
 
   // PLL-Reg-R3         =  32bit - FIXED !
-  // Registerselect        4bit
   //Fixed value to be written = 0x3 =3
 
 
   // PLL-Reg-R4         =  32bit
-  // Registerselect        4bit
   int U1_CountRes = 0;     // 1bit
   int U2_Cp3state = 0;     // 1bit
   int U3_PwrDown = 0;      // 1bit
@@ -197,11 +199,9 @@ void ConvertFreq(unsigned long R[])
 
 
   // PLL-Reg-R5         =  32bit
-  // Registerselect        // 4bit
-  // Phase Select: Not of partcular interst in Amatuer radio applications. Leave at a string of zeros.
+  // Phase Select: Not of particular interest in Amateur radio applications. Leave at a string of zeros.
 
   // PLL-Reg-R6         =  32bit
-  // Registerselect        // 4bit
   //Variable value to be written!!!
   int D_out_PWR = mdbm;      // 2bit  OutPwr 0-3 3= +5dBm   Power out 1
   int D_RF_ena = 1;            // 1bit  OutPwr 1=on           0 = off  Outport Null freischalten
@@ -214,33 +214,27 @@ void ConvertFreq(unsigned long R[])
   // reserved              // 7bit
 
   // PLL-Reg-R7         =  32bit
-  // Registerselect        // 4bit
   //Fixed value to be written = 0x120000E7 = 301990119 (dec)
 
   // PLL-Reg-R8         =  32bit
-  // Registerselect        // 4bit
   //Fixed value to be written = 0x102D0428 = 271385640 (dec)
 
   // PLL-Reg-R9         =  32bit
-  // Registerselect        // 4bit
   //Fixed value to be written = 0x5047CC9 = 84180169 (dec)
 
   // PLL-Reg-R10         =  32bit
-  // Registerselect        // 4bit
   //Fixed value to be written = 0xC0067A = 12584570 9dec)
 
   // PLL-Reg-R11         =  32bit
-  // Registerselect        // 4bit
   //Fixed value to be written = 0x61300B = 6369291 (dec)
 
   // PLL-Reg-R12         =  32bit
-  // Registerselect        // 4bit
   //Fixed value to be written = 0x1041C = 66588 (dec)
 
   // Referenz Freg Calc
 
   // int F4_BandSel = 10.0 * B_BandSelClk / PFDFreq;
-  double RFout = Freq;       // VCO-Frequenz  144200000  Freq ist global, RFout ist lokal
+  double RFout = Freq;       // VCO-Frequency  144200000
 
   // calc bandselect und RF-div
   float outdiv = 1;
@@ -330,22 +324,29 @@ void ConvertFreq(unsigned long R[])
 //////////////////////////////////////////////////////////////////////////////
 void setup() {
 
-  Wire.begin();
+  //  Wire.begin();
+
+  u8g2.begin();
 
   // ******************Screen mask static text*****************
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // enable internal HV supply for display and set I2C address
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.drawFastHLine(0,  14, 128, WHITE);
-  display.drawFastHLine(0,  34, 128, WHITE);
-  display.display();
-  display.fillRect(85, 0, 43, 12, BLACK);
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.setCursor(85, 0);
-  display.print("GI1MIC");
-  display.display();
+  u8g2.clearBuffer();
+
+  u8g2.setDrawColor(1);
+  u8g2.setFont(u8g2_font_crox5hb_tr);
+  u8g2.setCursor(20, 32);;
+  u8g2.print("GI1MIC");    // Change as required
+  u8g2.setFont(u8g2_font_6x10_tf);
+
+  u8g2.sendBuffer();
+
+  delay(2000);
+
+  // Draw lines
+  u8g2.clearBuffer();
+  u8g2.setDrawColor(1);
+  u8g2.drawLine(0, 14, 128, 14);
+  u8g2.drawLine(0, 38, 128, 38);
+
 
   SPI.begin();  // Start SPI for ADF5355
   pinMode (slaveSelectPin, OUTPUT);
@@ -367,25 +368,25 @@ void setup() {
   loopTime2 = currentTime;
 
 
-// If freq button pressed dring boot
-// allow the calibration data to be changed
-// else display what was saved and adjust
-// the refin freq as required
-  EEPROM.get(0,xtalOffset);
-//  xtalOffset = 605;
+  // If freq button pressed during boot allow calibration data to be changed
+  // else display what was saved and adjust 'refin' as needed
+  EEPROM.get(0, xtalOffset);
+  //  xtalOffset = 605;
   if (digitalRead(switch1) == LOW) {
     calibrate();
   } else {
-    display.fillRect(0, 15, 128, 16, BLACK);
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.setCursor(5, 0);
-    display.print("Xtal Offset");
-    display.setCursor(20 , 20);
-    display.print(xtalOffset, DEC);
-    display.print(" Khz");
-    display.display();
-    delay(2000);
+
+    u8g2.setDrawColor(0);
+    u8g2.drawBox(0, 15, 128, 16);
+
+    u8g2.setDrawColor(1);
+    u8g2.setCursor(5, 30);
+    u8g2.print("Xtal Offset: ");
+    u8g2.print(xtalOffset, DEC);
+    u8g2.print(" Khz");
+    u8g2.sendBuffer();
+
+    delay(3000);
   }
   refin -= xtalOffset;
 }
@@ -394,117 +395,83 @@ void setup() {
 void updateDisplay() {
 
   // I2C display update routine.
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(8, 40, 128, 12);
+  u8g2.setDrawColor(1);
+  u8g2.setCursor(8, 50);
+  u8g2.print( "Power out = ");
   if (mdbm == 0) {
-    delayMicroseconds(100);
-    display.fillRect(8, 40, 128, 12, BLACK);
-    delayMicroseconds(100);
-    display.setTextColor(WHITE);
-    delayMicroseconds(100);
-    display.setTextSize(1);
-    delayMicroseconds(100);
-    display.setCursor(8, 40);
-    delayMicroseconds(25);
-    display.print("Power out = -4 dBm");
-    delayMicroseconds(25000);
+    u8g2.print( "-4");
   }
   else if (mdbm == 1) {
-    display.fillRect(8, 40, 128, 12, BLACK);
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.setCursor(8, 40);
-    display.print("Power out = -1 dBm");
+    u8g2.print("-1");
   }
   else if (mdbm == 2) {
-    display.fillRect(8, 40, 128, 12, BLACK);
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.setCursor(8, 40);
-    display.print("Power out = +2 dBm");
+    u8g2.print("+2");
   }
   else if (mdbm == 3) {
-    display.fillRect(8, 40, 128, 12, BLACK);
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.setCursor(8, 40);
-    display.print("Power out = +5 dBm");
+    u8g2.print("-5");
   }
-  display.display();
+  u8g2.print( " dBm");
+  u8g2.sendBuffer();
 
-  //*********************Diplaying tuning step size *************************
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.setCursor(8 , 53);
-  display.print("Step = ");
+  //*********************Display tuning step size *************************
+  //  display.setTextColor(WHITE);
+  u8g2.setDrawColor(1);
+  u8g2.setCursor( 8, 62);
+  u8g2.print("Step = ");
   float ChanStep2 = ChanStep;
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(40, 53, 100, 16);
+  u8g2.setDrawColor(1);
+  u8g2.setCursor( 60, 62);
   if (ChanStep2 < 100)
   { ChanStep2 = ChanStep2 / 0.1;
-    display.fillRect(40, 53, 100, 16, BLACK);
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.setCursor(60 , 53);
-    display.print(ChanStep2, 0);
-    display.print(" Hz");
-    display.display();
+    u8g2.print(ChanStep2, 0);
+    u8g2.print(" Hz");
   }
   else if (ChanStep2 < 100000)
   { ChanStep2 = ChanStep2 / 100;
-    display.fillRect(40, 53, 100, 16, BLACK);
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.setCursor(60 , 53);
-    display.print(ChanStep2, 0);
-    display.print(" KHz");
-    display.display();
+    u8g2.print(ChanStep2, 0);
+    u8g2.print(" KHz");
   }
   else
   { ChanStep2 = ChanStep2 / 100000;
-    display.fillRect(40, 53, 100, 16, BLACK);
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.setCursor(60 , 53);
-    display.print(ChanStep2, 0);
-    display.print(" MHz");
+    u8g2.print(ChanStep2, 0);
+    u8g2.print(" MHz");
   }
+  u8g2.sendBuffer();
 
-  //**********************Displaying frequency***************************
+  //**********************Display frequency***************************
 
   double Freq2;
   Freq2 = Freq;
   Freq2 = Freq2 / 100000;
 
-  if (Freq2 < 1000) {
-    display.fillRect(0, 15, 128, 16, BLACK);
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.setCursor(20 , 20);
-    display.print(Freq2, 6 );
-    display.print(" MHz");
-  }
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(0, 15, 128, 16);
+  u8g2.setDrawColor(1);
+  u8g2.setCursor( 20, 30);
+  u8g2.print(Freq2, 6);
+  if (Freq2 < 1000)
+    u8g2.print(" MHz");
   else
-  {
-    display.fillRect(0, 15, 128, 16, BLACK);
-    display.setTextColor(WHITE);
-    display.setTextSize(1);
-    display.setCursor(20 , 20);
-    display.print(Freq2, 6);
-    display.print(" MHz");
-  }
+    u8g2.print(" KHz");
+  u8g2.sendBuffer();
 }
 
 
 void calibrate()
 {
-
-  display.fillRect(0, 15, 128, 16, BLACK);
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.setCursor(5, 0);
-  display.print("Offset");
-  display.setCursor(20 , 20);
-  delay(2000);
-  display.print(xtalOffset, DEC);
-  display.print(" Khz");
-  display.display();
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(0, 15, 128, 16);
+  u8g2.setDrawColor(1);
+  u8g2.setCursor( 5, 30);
+  u8g2.print("Set offset: ");
+  u8g2.print(xtalOffset, DEC);
+  u8g2.print(" KHz");
+  u8g2.sendBuffer();
+  delay(1000);
 
   while (digitalRead(switch1) == HIGH) {
     currentTime = millis();
@@ -525,17 +492,19 @@ void calibrate()
       }
       encoder_A_prev = encoder_A;     // Store value of A for next time
       loopTime = currentTime;         // Updates loopTime
-        display.fillRect(0, 15, 128, 16, BLACK);
-        display.setTextColor(WHITE);
-        display.setTextSize(1);
-        display.setCursor(20 , 20);
-        display.print(xtalOffset, DEC);
-        display.print(" Khz");
-        display.display();
+      u8g2.setDrawColor(0);
+      u8g2.drawBox(0, 15, 128, 16);
+      u8g2.setDrawColor(1);
+      u8g2.setCursor( 5, 30);
+      u8g2.print("Set offset: ");
+      u8g2.print(xtalOffset, DEC);
+      u8g2.print(" KHz");
+      u8g2.sendBuffer();
+      u8g2.sendBuffer();
     }
   }
 
-  EEPROM.put(0,xtalOffset);
+  EEPROM.put(0, xtalOffset);
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -563,10 +532,6 @@ void loop()
     cnt_pwr_old = cnt_pwr;
     SetFreq(Freq);
   }
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-
 
   if (digitalRead(ADF5355_MUX) == HIGH)   // select lock/unlock
   {
@@ -577,25 +542,15 @@ void loop()
   //*************************
 
   if (mrk1 != mrk1_old) {
-
+    u8g2.setDrawColor(0);
+    u8g2.drawBox(0, 0, 128, 12);
+    u8g2.setDrawColor(1);
+    u8g2.setCursor( 0, 7);
     if (digitalRead(ADF5355_MUX) == HIGH)
-    {
-      display.fillRect(0, 0, 80, 12, BLACK);
-      display.setTextColor(WHITE);
-      display.setTextSize(1);
-      display.setCursor(0, 0);
-      display.print("Locked");
-      display.display();
-    }
+      u8g2.print("Locked");
     else
-    {
-      display.fillRect(0, 0, 80, 12, BLACK);
-      display.setTextColor(WHITE);
-      display.setTextSize(0.5);
-      display.setCursor(0, 0);
-      display.print("Unlocked");
-      display.display();
-    }
+      u8g2.print("Unlocked");
+    u8g2.sendBuffer();
   }
 
   mrk1_old = mrk1;
@@ -695,7 +650,7 @@ void rotary_enc2()
   }
 }
 
-/////////////////////////// Subroutine: Fixfrequencyselect ////////////////////////////
+/////////////////////////// Subroutine: Fixed frequency select ////////////////////////////
 void fixfrq_select()
 {
   press = digitalRead(switch1);
