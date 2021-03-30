@@ -34,7 +34,7 @@
 // ADF5355  CLK-PA5, MUX-PB0, LE-PA4, DAT-PA7, 3.3V - 3.3V, GND - GND, Barrel Jack - 6V (or 5V on the Bluepill)
 //
 //
-// Version 2.1 At the request of VE7XDT I added a long press option to the frequency adjustment encoder. 
+// Version 2.1 At the request of VE7XDT I added a long press option to the frequency adjustment encoder.
 //             This toggles output pin B4 to select between an internal or external clock source using external hardware.
 //
 // Version 2.0 Updated code to use U8g2lib display library. This supports a greater range of displays.
@@ -89,7 +89,9 @@ unsigned char encoder_A2_prev = 0;
 const int switch1 = PB1;
 const int switch2 = PA1;
 
-const int clockSelect = PB4;      // Output for external clock select
+const int longPress1 = PB4;      // Output for long press on rotary encoder
+const int longPress2 = PB3;      // Output for long press on rotary encoder
+const int clockSource = PB5;      // Output for long press on rotary encoder
 
 boolean mrk1, mrk1_old, mrk2, mrk2_old, externalClk = 0;
 
@@ -361,8 +363,14 @@ void setup() {
   pinMode(pin_A2, INPUT_PULLUP);
   pinMode(pin_B2, INPUT_PULLUP);
 
-  pinMode(clockSelect, OUTPUT);
-  digitalWrite(clockSelect, LOW);
+  pinMode(longPress1, OUTPUT);
+  digitalWrite(longPress1, LOW);
+
+  pinMode(longPress2, OUTPUT);
+  digitalWrite(longPress2, LOW);
+
+  pinMode(clockSource, INPUT_PULLUP);
+
 
   pinMode(switch1, INPUT_PULLUP);     // 2 fix channel select
   pinMode(switch2, INPUT_PULLUP);     // 10 power select
@@ -397,18 +405,6 @@ void setup() {
   }
   refin -= xtalOffset;
 
-  // Update clock source on display
-  u8g2.setDrawColor(0);
-  u8g2.drawBox(64, 0, 128, 12);
-  u8g2.setDrawColor(1);
-  u8g2.setCursor( 100, 7);
-  if (digitalRead(clockSelect)) {
-    u8g2.print("Ext");
-  } else {
-    u8g2.print("Int");
-  }
-  u8g2.sendBuffer();
-
 }
 
 // *********************** Subroutine: update Display  **************************
@@ -433,7 +429,6 @@ void updateDisplay() {
     u8g2.print("-5");
   }
   u8g2.print( " dBm");
-  u8g2.sendBuffer();
 
   //*********************Display tuning step size *************************
   //  display.setTextColor(WHITE);
@@ -460,7 +455,7 @@ void updateDisplay() {
     u8g2.print(ChanStep2, 0);
     u8g2.print(" MHz");
   }
-  u8g2.sendBuffer();
+
 
   //**********************Display frequency***************************
 
@@ -477,6 +472,7 @@ void updateDisplay() {
     u8g2.print(" MHz");
   else
     u8g2.print(" KHz");
+
   u8g2.sendBuffer();
 }
 
@@ -582,6 +578,21 @@ void loop()
     updateDisplay();   // // needs second update to stop encoders interacting ???///
     Freq_Old = Freq;
   }
+
+  //*********************Display clk source *************************
+
+  // Update clock source on display
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(64, 0, 128, 12);
+  u8g2.setDrawColor(1);
+  u8g2.setCursor( 100, 7);
+  if (digitalRead(clockSource)) {
+    u8g2.print("Int");
+  } else {
+    u8g2.print("Ext");
+  }
+  u8g2.sendBuffer();
+
 }
 
 //*************************** End of main loop  ********************************************
@@ -680,17 +691,7 @@ void fixfrq_select()
       delay(10);
     };      // Wait for release
     if ((millis() - pressedTime) > 500) {                  // Long press delay
-      digitalWrite(clockSelect, !digitalRead(clockSelect));;     // Invert output
-      u8g2.setDrawColor(0);
-      u8g2.drawBox(64, 0, 128, 12);
-      u8g2.setDrawColor(1);
-      u8g2.setCursor( 100, 7);
-      if (digitalRead(clockSelect)) {
-        u8g2.print("Ext");
-      } else {
-        u8g2.print("Int");
-      }
-      u8g2.sendBuffer();
+      digitalWrite(longPress1, !digitalRead(longPress1));;     // Invert output
     } else {
       if (cnt_fix == 0) {                                  // Short press
         Freq = 5200000;  // 52.0 MHz
@@ -731,26 +732,34 @@ void fixfrq_select()
 ////////////////////////////////// Subroutine: Power select ///////////////////////////////
 void pwr_select()
 {
-  press = digitalRead(switch2);
-  if (press == LOW)
-  {
-    if (cnt_pwr == 0) {
-      mdbm = 0;  // -4dBm
+  unsigned long pressedTime;
+
+  if (digitalRead(switch2) == LOW)
+  { pressedTime = millis();
+    while (digitalRead(switch2) == LOW) {
+      delay(10);
+    };      // Wait for release
+    if ((millis() - pressedTime) > 500) {                  // Long press delay
+      digitalWrite(longPress2, !digitalRead(longPress2));;     // Invert output
+    } else {
+      if (cnt_pwr == 0) {
+        mdbm = 0;  // -4dBm
+      }
+      else if (cnt_pwr == 1) {
+        mdbm = 1;  // -1dBm
+      }
+      else if (cnt_pwr == 2) {
+        mdbm = 2;  // +2dBm
+      }
+      else if (cnt_pwr == 3) {
+        mdbm = 3;  // +5dBm
+      }
+      cnt_pwr = cnt_pwr + 1;
+      if (cnt_pwr == 4) {
+        cnt_pwr = 0 ;
+      }
+      delay(300);
     }
-    else if (cnt_pwr == 1) {
-      mdbm = 1;  // -1dBm
-    }
-    else if (cnt_pwr == 2) {
-      mdbm = 2;  // +2dBm
-    }
-    else if (cnt_pwr == 3) {
-      mdbm = 3;  // +5dBm
-    }
-    cnt_pwr = cnt_pwr + 1;
-    if (cnt_pwr == 4) {
-      cnt_pwr = 0 ;
-    }
-    delay(300);
   }
 }
 //////////////////////////////////////////////////////////////////////////////////////
