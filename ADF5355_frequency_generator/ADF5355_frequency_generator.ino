@@ -96,8 +96,7 @@ const int clockSource = PB5;      // Output for long press on rotary encoder
 boolean mrk1, mrk1_old, mrk2, mrk2_old, externalClk = 0;
 
 int press = 0;
-int cnt_step = 6;
-int cnt_step_old;
+long cnt_step_old;
 int cnt_fix = 4;
 int cnt_fix_old;
 int cnt_pwr = 1;
@@ -110,7 +109,6 @@ const int ADF5355_MUX = PB0;
 
 long Freq = 14520000;  // Start-up frequency
 long Freq_Old;
-//long refin =  2499395;      // XTAL freq (corrected for my on board 25Mhz xtal)
 long refin =  2500000;      // XTAL freq (corrected for my on board 25Mhz xtal)
 long xtalOffset = 0;
 long ChanStep = 10000;      // Initial channel step = 100.0 Khz
@@ -180,10 +178,8 @@ void ConvertFreq(unsigned long R[])
   int M_Mod2 = 16383;            // 14 bit
   //    int Frac2 = 0;            // 14 bit
 
-
   // PLL-Reg-R3         =  32bit - FIXED !
   //Fixed value to be written = 0x3 =3
-
 
   // PLL-Reg-R4         =  32bit
   int U1_CountRes = 0;     // 1bit
@@ -201,8 +197,6 @@ void ConvertFreq(unsigned long R[])
   int RD2refdoubl = 0;     // 1bit
   int M_Muxout = 6;        // 3bit
   // reserved              // 2bit
-
-
 
   // PLL-Reg-R5         =  32bit
   // Phase Select: Not of particular interest in Amateur radio applications. Leave at a string of zeros.
@@ -371,7 +365,6 @@ void setup() {
 
   pinMode(clockSource, INPUT_PULLUP);
 
-
   pinMode(switch1, INPUT_PULLUP);     // 2 fix channel select
   pinMode(switch2, INPUT_PULLUP);     // 10 power select
   pinMode(ADF5355_MUX, INPUT_PULLUP);    // lock/unlock
@@ -381,7 +374,6 @@ void setup() {
   currentTime = millis();
   loopTime = currentTime;
   loopTime2 = currentTime;
-
 
   // If freq button pressed during boot allow calibration data to be changed
   // else display what was saved and adjust 'refin' as needed
@@ -404,7 +396,6 @@ void setup() {
     delay(3000);
   }
   refin -= xtalOffset;
-
 }
 
 // *********************** Subroutine: update Display  **************************
@@ -458,7 +449,6 @@ void updateDisplay() {
 
 
   //**********************Display frequency***************************
-
   double Freq2;
   Freq2 = Freq;
   Freq2 = Freq2 / 100000;
@@ -529,11 +519,11 @@ void calibrate()
 void loop()
 {
   rotary_enc2();
-  if (cnt_step != cnt_step_old) {
+  if (ChanStep != cnt_step_old) {
     updateDisplay();
     //  delayMicroseconds(250);
     updateDisplay();   // needs second update to stop encoders interacting ???///
-    cnt_step_old = cnt_step;
+    cnt_step_old = ChanStep;
   }
 
   fixfrq_select();
@@ -632,51 +622,21 @@ void rotary_enc2()
     encoder_B2 = digitalRead(pin_B2);
     if ((!encoder_A2) && (encoder_A2_prev)) {
       if (encoder_B2) {
-        cnt_step = cnt_step + 1;
-        if (cnt_step > 9) {
-          cnt_step = 1;
-        }
+        ChanStep = ChanStep * 10;
       }
       else {
-        cnt_step = cnt_step - 1;
-        if (cnt_step < 1) {
-          cnt_step = 9;
-        }
+        ChanStep = ChanStep / 10;
       }
     }
     encoder_A2_prev = encoder_A2;     // Store value of A for next time
     loopTime2 = currentTime;         // Updates loopTime
   }
   // Serial.println(cnt_step);
-  if (cnt_step == 0) {
-    ChanStep = 0.1;  // 1 Hz
+  if (ChanStep < 0.1 ) {
+    ChanStep = 100000000;  // 1 Hz
   }
-  else if (cnt_step == 1) {
-    ChanStep = 1;  // 10 Hz
-  }
-  else if (cnt_step == 2) {
-    ChanStep = 10;  // 100 Hz
-  }
-  else if (cnt_step == 3) {
-    ChanStep = 100;  // 1 KHz
-  }
-  else if (cnt_step == 4) {
-    ChanStep = 1000;  // 10 KHz
-  }
-  else if (cnt_step == 5) {
-    ChanStep = 10000;  // 100KHz
-  }
-  else if (cnt_step == 6) {
-    ChanStep = 100000;  // 1 MHz
-  }
-  else if (cnt_step == 7) {
-    ChanStep = 1000000;  // 10 MHz
-  }
-  else if (cnt_step == 8) {
-    ChanStep = 10000000;  // 100 MHz
-  }
-  else if (cnt_step == 9) {
-    ChanStep = 100000000;  // 1000 MHz
+  if (ChanStep > 100000000) {
+    ChanStep = 0.1;  // 10 Hz
   }
 }
 
