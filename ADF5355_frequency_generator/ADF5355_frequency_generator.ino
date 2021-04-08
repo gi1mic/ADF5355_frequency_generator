@@ -34,6 +34,8 @@
 // ADF5355  CLK-PA5, MUX-PB0, LE-PA4, DAT-PA7, 3.3V - 3.3V, GND - GND, Barrel Jack - 6V (or 5V on the Bluepill)
 //
 //
+// Version 2.2 Simplified frequency step code to fix 1Khz selection
+//
 // Version 2.1 At the request of VE7XDT I added a long press option to the frequency adjustment encoder.
 //             This toggles output pin B4 to select between an internal or external clock source using external hardware.
 //
@@ -432,18 +434,15 @@ void updateDisplay() {
   u8g2.setDrawColor(1);
   u8g2.setCursor( 60, 62);
   if (ChanStep2 < 100)
-  { ChanStep2 = ChanStep2 / 0.1;
-    u8g2.print(ChanStep2, 0);
+  { u8g2.print(ChanStep2 / 0.1, 0);
     u8g2.print(" Hz");
   }
   else if (ChanStep2 < 100000)
-  { ChanStep2 = ChanStep2 / 100;
-    u8g2.print(ChanStep2, 0);
+  { u8g2.print(ChanStep2 / 100, 0);
     u8g2.print(" KHz");
   }
   else
-  { ChanStep2 = ChanStep2 / 100000;
-    u8g2.print(ChanStep2, 0);
+  { u8g2.print(ChanStep2 / 100000, 0);
     u8g2.print(" MHz");
   }
 
@@ -632,12 +631,12 @@ void rotary_enc2()
     loopTime2 = currentTime;         // Updates loopTime
   }
   // Serial.println(cnt_step);
-  if (ChanStep < 0.1 ) {
-    ChanStep = 100000000;  // 1 Hz
-  }
   if (ChanStep > 100000000) {
-    ChanStep = 0.1;  // 10 Hz
+    ChanStep = 100000000;  
   }
+  if (ChanStep < 100 ) {
+    ChanStep = 100;
+  } 
 }
 
 /////////////////////////// Subroutine: Fixed frequency select ////////////////////////////
