@@ -34,6 +34,8 @@
 // ADF5355  CLK-PA5, MUX-PB0, LE-PA4, DAT-PA7, 3.3V - 3.3V, GND - GND, Barrel Jack - 6V (or 5V on the Bluepill)
 //
 //
+// Version 2.3 Simplified dbm and preset frequency selection code
+//
 // Version 2.2 Simplified frequency step code to fix 1Khz selection
 //
 // Version 2.1 At the request of VE7XDT I added a long press option to the frequency adjustment encoder.
@@ -95,28 +97,38 @@ const int longPress1 = PB4;      // Output for long press on rotary encoder
 const int longPress2 = PB3;      // Output for long press on rotary encoder
 const int clockSource = PB5;      // Output for long press on rotary encoder
 
-boolean mrk1, mrk1_old, mrk2, mrk2_old, externalClk = 0;
-
-int press = 0;
-long cnt_step_old;
-int cnt_fix = 4;
-int cnt_fix_old;
-int cnt_pwr = 1;
-int cnt_pwr_old;
-int mdbm = 0;
-
 const int slaveSelectPin = PA4;  // SPI-SS bzw. enable ADF4350  wurde von mir von pin 3 auf pin 10 geändert
 const int ADF5355_MUX = PB0;
 
+boolean mrk1, mrk1_old, mrk2, mrk2_old, externalClk = 0;
+
+int cnt_fix = 4;
+int cnt_fix_old;
+int dbm = 0;
+int dbm_old;
 
 long Freq = 14520000;  // Start-up frequency
 long Freq_Old;
 long refin =  2500000;      // XTAL freq (corrected for my on board 25Mhz xtal)
 long xtalOffset = 0;
 long ChanStep = 10000;      // Initial channel step = 100.0 Khz
+long ChanStep_old;
 unsigned long Reg[13];      // ADF5355 Reg's
-int pegelZ = 0;            // Zähler konstante für Ausgangspegel-Zähler
-int outPegel = mdbm;       // Ausgangspegel beim start = -4 dBm
+
+const long freqPresets[] = {   // Array to hold the preset frequencies add or remove frequencies as required
+  5200000, // 52.0 MHz
+  7010000,  // 70.1 MHz
+  14420000,  // 144.2 MHz
+  43290000,  // 432.9 MHz
+  129690000,  // 1296.9 MHz
+  232090000,  // 2320.9 MHz
+  345610000,  // 3456.1 MHz
+  576050000,  // 5760.5 MHz
+  1036810000  // 10368.1  MHz
+};
+
+
+
 
 ///////////////////////// Subroutine: Set Frequency ADF5355 ///////////////////////////
 void SetFreq(long Frequ)     // Freq hier lokal oben global
@@ -205,7 +217,7 @@ void ConvertFreq(unsigned long R[])
 
   // PLL-Reg-R6         =  32bit
   //Variable value to be written!!!
-  int D_out_PWR = mdbm;      // 2bit  OutPwr 0-3 3= +5dBm   Power out 1
+  int D_out_PWR = dbm;      // 2bit  OutPwr 0-3 3= +5dBm   Power out 1
   int D_RF_ena = 1;            // 1bit  OutPwr 1=on           0 = off  Outport Null freischalten
   int Reserved  = 0;                 // 3bit
   int D_RFoutB = 1;         // 1bit  aux OutSel
@@ -403,22 +415,22 @@ void setup() {
 // *********************** Subroutine: update Display  **************************
 void updateDisplay() {
 
-  // I2C display update routine.
+  //*********************Display dBm *************************
   u8g2.setDrawColor(0);
   u8g2.drawBox(8, 40, 128, 12);
   u8g2.setDrawColor(1);
   u8g2.setCursor(8, 50);
   u8g2.print( "Power out = ");
-  if (mdbm == 0) {
+  if (dbm == 0) {
     u8g2.print( "-4");
   }
-  else if (mdbm == 1) {
+  else if (dbm == 1) {
     u8g2.print("-1");
   }
-  else if (mdbm == 2) {
+  else if (dbm == 2) {
     u8g2.print("+2");
   }
-  else if (mdbm == 3) {
+  else if (dbm == 3) {
     u8g2.print("-5");
   }
   u8g2.print( " dBm");
@@ -446,7 +458,6 @@ void updateDisplay() {
     u8g2.print(" MHz");
   }
 
-
   //**********************Display frequency***************************
   double Freq2;
   Freq2 = Freq;
@@ -465,7 +476,7 @@ void updateDisplay() {
   u8g2.sendBuffer();
 }
 
-
+////////////////////////////////////////////////////////////////////////
 void calibrate()
 {
   u8g2.setDrawColor(0);
@@ -518,11 +529,11 @@ void calibrate()
 void loop()
 {
   rotary_enc2();
-  if (ChanStep != cnt_step_old) {
+  if (ChanStep != ChanStep_old) {
     updateDisplay();
     //  delayMicroseconds(250);
     updateDisplay();   // needs second update to stop encoders interacting ???///
-    cnt_step_old = ChanStep;
+    ChanStep_old = ChanStep;
   }
 
   fixfrq_select();
@@ -532,9 +543,9 @@ void loop()
   }
 
   pwr_select();
-  if (cnt_pwr != cnt_pwr_old) {
+  if (dbm != dbm_old) {
     updateDisplay();
-    cnt_pwr_old = cnt_pwr;
+    dbm_old = dbm;
     SetFreq(Freq);
   }
 
@@ -626,17 +637,18 @@ void rotary_enc2()
       else {
         ChanStep = ChanStep / 10;
       }
+      delay(100);
     }
     encoder_A2_prev = encoder_A2;     // Store value of A for next time
     loopTime2 = currentTime;         // Updates loopTime
   }
   // Serial.println(cnt_step);
   if (ChanStep > 100000000) {
-    ChanStep = 100000000;  
+    ChanStep = 100000000;
   }
   if (ChanStep < 100 ) {
     ChanStep = 100;
-  } 
+  }
 }
 
 /////////////////////////// Subroutine: Fixed frequency select ////////////////////////////
@@ -652,35 +664,8 @@ void fixfrq_select()
     if ((millis() - pressedTime) > 500) {                  // Long press delay
       digitalWrite(longPress1, !digitalRead(longPress1));;     // Invert output
     } else {
-      if (cnt_fix == 0) {                                  // Short press
-        Freq = 5200000;  // 52.0 MHz
-      }
-      else if (cnt_fix == 1) {
-        Freq = 7010000;  // 70.1 MHz
-      }
-      else if (cnt_fix == 2) {
-        Freq = 14420000;  // 144.2 MHz
-      }
-      else if (cnt_fix == 3) {
-        Freq = 43290000;  // 432.9 MHz
-      }
-      else if (cnt_fix == 4) {
-        Freq = 129690000;  // 1296.9 MHz
-      }
-      else if (cnt_fix == 5) {
-        Freq = 232090000;  // 2320.9 MHz
-      }
-      else if (cnt_fix == 6) {
-        Freq = 345610000;  // 3456.1 MHz
-      }
-      else if (cnt_fix == 7) {
-        Freq = 576050000;  // 5760.5 MHz
-      }
-      else if (cnt_fix == 8) {
-        Freq = 1036810000;  // 10368.1  MHz
-      }
-      cnt_fix = cnt_fix + 1;
-      if (cnt_fix == 9) {
+      Freq = freqPresets[cnt_fix++];
+      if (cnt_fix >= (sizeof(freqPresets) / sizeof(freqPresets[0]))) {
         cnt_fix = 0 ;
       }
       delay(300);
@@ -701,21 +686,9 @@ void pwr_select()
     if ((millis() - pressedTime) > 500) {                  // Long press delay
       digitalWrite(longPress2, !digitalRead(longPress2));;     // Invert output
     } else {
-      if (cnt_pwr == 0) {
-        mdbm = 0;  // -4dBm
-      }
-      else if (cnt_pwr == 1) {
-        mdbm = 1;  // -1dBm
-      }
-      else if (cnt_pwr == 2) {
-        mdbm = 2;  // +2dBm
-      }
-      else if (cnt_pwr == 3) {
-        mdbm = 3;  // +5dBm
-      }
-      cnt_pwr = cnt_pwr + 1;
-      if (cnt_pwr == 4) {
-        cnt_pwr = 0 ;
+      dbm++;
+      if (dbm >= 4) {
+        dbm = 0 ;
       }
       delay(300);
     }
