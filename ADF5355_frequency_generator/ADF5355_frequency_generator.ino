@@ -644,10 +644,10 @@ void rotary_enc2()
   }
   // Serial.println(cnt_step);
   if (ChanStep > 100000000) {
-    ChanStep = 100000000;
+    ChanStep = 100;
   }
   if (ChanStep < 100 ) {
-    ChanStep = 100;
+    ChanStep = 100000000;
   }
 }
 
