@@ -37,6 +37,8 @@
 // ADF5355  CLK-PA5, MUX-PB0, LE-PA4, DAT-PA7, 3.3V - 3.3V, GND - GND, Barrel Jack - 6V (or 5V from the Bluepill)
 //
 //
+// Version 2.5 Added support for steps in Hz. Changed internal code frequencies to be in Hz rather than the Hz/10 of the original code.
+//
 // Version 2.4 Simplified more code and tidy up of on-screen formatting
 //
 // Version 2.3 Simplified dbm and preset frequency selection code
@@ -79,7 +81,15 @@
 // Change the following for your display. See the u8g2 library wiki oe examples for options.
 U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, PB6, PB7);
 
+#define START_FREQ 145400000  // Start-up frequency
 
+#define INIT_STEP       1000000 // Initial channel step
+#define CHAN_STEP_SIZE       10 // Chan step multiplier (up and down)
+#define MIN_STEP              1 // Minimum  step frequency
+#define MAX_STEP     1000000000 // Max  step frequency
+
+#define MIN_ADF5355    54000000 // Lowest ADF5355 freq
+#define MAX_ADF5355  1360000000 // Highest ADF5355 freq
 
 unsigned long currentTime;
 unsigned long loopTime;
@@ -113,37 +123,32 @@ int cnt_fix_old;
 int dbm = 0;
 int dbm_old;
 
-
-#define INIT_CHAN_STEP 10000    // Initial channel step = 100.0 Khz
-#define CHAN_STEP 10            // Chan step multiplier (up and down)
-#define MIN_CHAN_STEP 100       // Minimum channel step frequency
-#define MAX_CHAN_STEP 100000000 // Max channel step frequency
-
-long Freq = 14520000;  // Start-up frequency
-long Freq_Old;
+double Freq = START_FREQ;
+double Freq_Old;
 long refin =  2500000;      // XTAL freq (corrected for my on board 25Mhz xtal)
 long xtalOffset = 0;
-long ChanStep = INIT_CHAN_STEP;
+long ChanStep = INIT_STEP;
 long ChanStep_old;
 unsigned long Reg[13];      // ADF5355 Reg's
 
-const long freqPresets[] = {   // Array to hold the preset frequencies add or remove frequencies as required
-  5200000, // 52.0 MHz
-  7010000,  // 70.1 MHz
-  14420000,  // 144.2 MHz
-  43290000,  // 432.9 MHz
-  129690000,  // 1296.9 MHz
-  232090000,  // 2320.9 MHz
-  345610000,  // 3456.1 MHz
-  576050000,  // 5760.5 MHz
-  1036810000  // 10368.1  MHz
+const double freqPresets[] = {   // Array to hold the preset frequencies add or remove frequencies as required
+     52000000, // 52.0 MHz
+     70100000, // 70.1 MHz
+    144200000, // 144.2 MHz
+    145400000, // 145.4 MHz
+    432900000, // 432.9 MHz
+   1296900000, // 1296.9 MHz
+   2320900000, // 2320.9 MHz
+   3456100000, // 3456.1 MHz
+   5760500000, // 5760.5 MHz
+  10368100000  // 10368.1  MHz
 };
 
 
 
 
 ///////////////////////// Subroutine: Set Frequency ADF5355 ///////////////////////////
-void SetFreq(long Frequ)     // Freq hier lokal oben global
+void SetFreq()
 {
   //Initialization sequence
   ConvertFreq(Reg);
@@ -185,37 +190,36 @@ void Write_ADF_Reg(int idx)
 }
 
 
-
 ////////////////////////////// Sub-Subroutine ADF5355 //////////////////////////
 void ConvertFreq(unsigned long R[])
 ////  Declare variables for registers/////
 {
-  // PLL-Reg-R0         =  32bit
+  // PLL-Reg-R0 = 32bit
   //  int N_Int = 92;       // 16bit
-  int Prescal = 0;         // 1bit geht nicht ??? it does not work
+  int Prescal = 0;          // 1bit geht nicht ??? it does not work
   int Autocal = 1;          //1 bit
-  //  reserved           // 10bit
+  //  reserved              // 10bit
 
-  // PLL-Reg-R1         =  32bit
-  //   int FRAC1 = 10;       // 24 bit
-  //   reserved              // 4bit
+  // PLL-Reg-R1 = 32bit
+  // int FRAC1 = 10;       // 24 bit
+  // reserved              // 4bit
 
   // PLL-Reg-R2         =  32bit
   int M_Mod2 = 16383;            // 14 bit
-  //    int Frac2 = 0;            // 14 bit
+  // int Frac2 = 0;            // 14 bit
 
   // PLL-Reg-R3         =  32bit - FIXED !
-  //Fixed value to be written = 0x3 =3
+  // Fixed value to be written = 0x3 =3
 
-  // PLL-Reg-R4         =  32bit
+  // PLL-Reg-R4 =  32bit
   int U1_CountRes = 0;     // 1bit
   int U2_Cp3state = 0;     // 1bit
   int U3_PwrDown = 0;      // 1bit
   int U4_PDpola = 1;       // 1bit
-  int U5_MuxLog = 1;          // 1bit
-  int U6_RefMode = 1;          // 1bit
-  //  int U5_LPD = 0;          // 1bit
-  //  int U6_LPF = 1;          // 1bit 1=Integer, 0=Frac not spported yet
+  int U5_MuxLog = 1;       // 1bit
+  int U6_RefMode = 1;      // 1bit
+  //  int U5_LPD = 0;      // 1bit
+  //  int U6_LPF = 1;      // 1bit 1=Integer, 0=Frac not spported yet
   int CP_ChgPump = 9;      // 4bit
   int D1_DoublBuf = 0;     // 1bit
   int R_Counter = 1;       // 10bit
@@ -224,43 +228,43 @@ void ConvertFreq(unsigned long R[])
   int M_Muxout = 6;        // 3bit
   // reserved              // 2bit
 
-  // PLL-Reg-R5         =  32bit
+  // PLL-Reg-R5 = 32bit
   // Phase Select: Not of particular interest in Amateur radio applications. Leave at a string of zeros.
 
-  // PLL-Reg-R6         =  32bit
-  //Variable value to be written!!!
+  // PLL-Reg-R6 = 32bit
+  // Variable value to be written!!!
   int D_out_PWR = dbm;      // 2bit  OutPwr 0-3 3= +5dBm   Power out 1
-  int D_RF_ena = 1;            // 1bit  OutPwr 1=on           0 = off  Outport Null freischalten
-  int Reserved  = 0;                 // 3bit
+  int D_RF_ena = 1;         // 1bit  OutPwr 1=on           0 = off  Outport Null freischalten
+  int Reserved  = 0;        // 3bit
   int D_RFoutB = 1;         // 1bit  aux OutSel
-  int D_MTLD = 0;              // 1bit
-  int CPBleed = 126;   // 8bit
-  int D_RfDivSel = 3;      // 3bit 3=70cm 4=2m    lokale Variable
+  int D_MTLD = 0;           // 1bit
+  int CPBleed = 126;        // 8bit
+  int D_RfDivSel = 3;       // 3bit 3=70cm 4=2m    lokale Variable
   int D_FeedBack = 1;       // 1bit
-  // reserved              // 7bit
+  // reserved               // 7bit
 
-  // PLL-Reg-R7         =  32bit
-  //Fixed value to be written = 0x120000E7 = 301990119 (dec)
+  // PLL-Reg-R7 = 32bit
+  // Fixed value to be written = 0x120000E7 = 301990119 (dec)
 
-  // PLL-Reg-R8         =  32bit
-  //Fixed value to be written = 0x102D0428 = 271385640 (dec)
+  // PLL-Reg-R8 = 32bit
+  // Fixed value to be written = 0x102D0428 = 271385640 (dec)
 
-  // PLL-Reg-R9         =  32bit
-  //Fixed value to be written = 0x5047CC9 = 84180169 (dec)
+  // PLL-Reg-R9 = 32bit
+  // Fixed value to be written = 0x5047CC9 = 84180169 (dec)
 
-  // PLL-Reg-R10         =  32bit
-  //Fixed value to be written = 0xC0067A = 12584570 9dec)
+  // PLL-Reg-R10 =  32bit
+  // Fixed value to be written = 0xC0067A = 12584570 9dec)
 
-  // PLL-Reg-R11         =  32bit
-  //Fixed value to be written = 0x61300B = 6369291 (dec)
+  // PLL-Reg-R11 =  32bit
+  // Fixed value to be written = 0x61300B = 6369291 (dec)
 
-  // PLL-Reg-R12         =  32bit
-  //Fixed value to be written = 0x1041C = 66588 (dec)
+  // PLL-Reg-R12 =  32bit
+  // Fixed value to be written = 0x1041C = 66588 (dec)
 
   // Referenz Freg Calc
 
   // int F4_BandSel = 10.0 * B_BandSelClk / PFDFreq;
-  double RFout = Freq;       // VCO-Frequency  144200000
+  double RFout = Freq / 10;       // VCO-Frequency  144200000
 
   // calc bandselect und RF-div
   float outdiv = 1;
@@ -330,16 +334,16 @@ void ConvertFreq(unsigned long R[])
 
   ////////////////// Set 32 bit register values R0 to R12 ///////////////////////////
 
-  R[0] = (unsigned long)(0 + N_Int * pow(2, 4) + Prescal * pow(2, 20) + Autocal * pow(2, 21)); // R0 für Startfrequenz ok
-  R[1] = (unsigned long)(1 + F_Frac1 * pow(2, 4));
-  R[2] = (unsigned long)(2 + M_Mod2 * pow(2, 4) + F_Frac2 * pow(2, 18)); //
-  R[3] = (unsigned long)(0x3);  //Fixed value (Phase control not needed)
-  R[4] = (unsigned long)(4 + U1_CountRes * pow(2, 4) + U2_Cp3state * pow(2, 5) + U3_PwrDown * pow(2, 6) + U4_PDpola * pow(2, 7) + U5_MuxLog * pow(2, 8) + U6_RefMode * pow(2, 9) + CP_ChgPump * pow(2, 10) + D1_DoublBuf * pow(2, 14) + R_Counter * pow(2, 15) + RD1_Rdiv2 * pow(2, 25) + RD2refdoubl * pow(2, 26) + M_Muxout * pow(2, 27));
-  R[5] = (unsigned long) (0x800025); // Fixed (Reserved)
-  R[6] = (unsigned long)(6 + D_out_PWR * pow(2, 4) + D_RF_ena * pow(2, 6) + Reserved * pow(2, 7) + D_RFoutB * pow(2, 10) + D_MTLD * pow(2, 11) + Reserved * pow(2, 12) + CPBleed * pow(2, 13) +  D_RfDivSel * pow(2, 21) + D_FeedBack * pow(2, 24) + 10 * pow(2, 25));
-  R[7] = (unsigned long) (0x120000E7);
-  R[8] = (unsigned long) (0x102D0428);
-  R[9] = (unsigned long) (0x2A29FCC9);
+  R[0]  = (unsigned long)(0 + N_Int * pow(2, 4) + Prescal * pow(2, 20) + Autocal * pow(2, 21)); // R0 für Startfrequenz ok
+  R[1]  = (unsigned long)(1 + F_Frac1 * pow(2, 4));
+  R[2]  = (unsigned long)(2 + M_Mod2 * pow(2, 4) + F_Frac2 * pow(2, 18)); //
+  R[3]  = (unsigned long)(0x3);  //Fixed value (Phase control not needed)
+  R[4]  = (unsigned long)(4 + U1_CountRes * pow(2, 4) + U2_Cp3state * pow(2, 5) + U3_PwrDown * pow(2, 6) + U4_PDpola * pow(2, 7) + U5_MuxLog * pow(2, 8) + U6_RefMode * pow(2, 9) + CP_ChgPump * pow(2, 10) + D1_DoublBuf * pow(2, 14) + R_Counter * pow(2, 15) + RD1_Rdiv2 * pow(2, 25) + RD2refdoubl * pow(2, 26) + M_Muxout * pow(2, 27));
+  R[5]  = (unsigned long) (0x800025); // Fixed (Reserved)
+  R[6]  = (unsigned long)(6 + D_out_PWR * pow(2, 4) + D_RF_ena * pow(2, 6) + Reserved * pow(2, 7) + D_RFoutB * pow(2, 10) + D_MTLD * pow(2, 11) + Reserved * pow(2, 12) + CPBleed * pow(2, 13) +  D_RfDivSel * pow(2, 21) + D_FeedBack * pow(2, 24) + 10 * pow(2, 25));
+  R[7]  = (unsigned long) (0x120000E7);
+  R[8]  = (unsigned long) (0x102D0428);
+  R[9]  = (unsigned long) (0x2A29FCC9);
   R[10] = (unsigned long) (0xC0043A);
   R[11] = (unsigned long) (0x61300B);
   R[12] = (unsigned long) (0x1041C);
@@ -349,8 +353,6 @@ void ConvertFreq(unsigned long R[])
 //                                      Setup                               //
 //////////////////////////////////////////////////////////////////////////////
 void setup() {
-
-  //  Wire.begin();
 
   u8g2.begin();
 
@@ -362,7 +364,6 @@ void setup() {
   u8g2.setCursor(20, 32);;
   u8g2.print("GI1MIC");    // Change as required
   u8g2.setFont(u8g2_font_6x10_tf);
-
   u8g2.sendBuffer();
 
   delay(2000);
@@ -372,7 +373,6 @@ void setup() {
   u8g2.setDrawColor(1);
   u8g2.drawLine(0, 14, 128, 14);
   u8g2.drawLine(0, 38, 128, 38);
-
 
   SPI.begin();  // Start SPI for ADF5355
   pinMode (slaveSelectPin, OUTPUT);
@@ -404,21 +404,18 @@ void setup() {
   // If freq button pressed during boot allow calibration data to be changed
   // else display what was saved and adjust 'refin' as needed
   EEPROM.get(0, xtalOffset);
-  //  xtalOffset = 605;
+
   if (digitalRead(switch1) == LOW) {
     calibrate();
   } else {
-
     u8g2.setDrawColor(0);
     u8g2.drawBox(0, 15, 128, 16);
-
     u8g2.setDrawColor(1);
     u8g2.setCursor(5, 30);
     u8g2.print("Xtal Offset: ");
     u8g2.print(xtalOffset, DEC);
     u8g2.print(" Khz");
     u8g2.sendBuffer();
-
     delay(3000);
   }
   refin -= xtalOffset;
@@ -426,8 +423,7 @@ void setup() {
 
 // *********************** Subroutine: update Display  **************************
 void updateDisplay() {
-
-  //*********************Display dBm *************************
+//*********************Display dBm *************************
   u8g2.setDrawColor(0);
   u8g2.drawBox(8, 40, 128, 12);
   u8g2.setDrawColor(1);
@@ -435,14 +431,11 @@ void updateDisplay() {
   u8g2.print( "Power out = ");
   if (dbm == 0) {
     u8g2.print( "-4");
-  }
-  else if (dbm == 1) {
+  } else if (dbm == 1) {
     u8g2.print("-1");
-  }
-  else if (dbm == 2) {
+  } else if (dbm == 2) {
     u8g2.print("+2");
-  }
-  else if (dbm == 3) {
+  } else if (dbm == 3) {
     u8g2.print("-5");
   }
   u8g2.print( " dBm");
@@ -456,31 +449,29 @@ void updateDisplay() {
   u8g2.drawBox(70, 53, 100, 16);
   u8g2.setDrawColor(1);
   u8g2.setCursor( 70, 62);
-  if (ChanStep < 100) {
-    u8g2.printf("%4u Hz", ChanStep * 10 );
-  } else if (ChanStep < 100000) {
-    u8g2.printf("%4u KHz", ChanStep / 100);
+  if (ChanStep < 1000) {
+    u8g2.printf("%4u Hz", ChanStep );
+  } else if (ChanStep < 1000000) {
+    u8g2.printf("%4u KHz", ChanStep / 1000);
   } else {
-    u8g2.printf("%4u MHz", ChanStep / 100000);
+    u8g2.printf("%4u MHz", ChanStep / 1000000);
   }
 
   //**********************Display frequency***************************
 
   double locFreq = Freq;
-  locFreq = locFreq / 100000;
+  locFreq = locFreq / 1000000;
 
   u8g2.setDrawColor(0);
   u8g2.drawBox(0, 15, 128, 16);
   u8g2.setDrawColor(1);
+  u8g2.setFont(u8g2_font_helvB10_tr);
   u8g2.setCursor( 00, 31);
-  u8g2.setFont(u8g2_font_courB12_tr);
-  char freqString [20];
-  floatToString(freqString, locFreq , 3, 9);
+  char freqString [25];
+  floatToString(freqString, locFreq , 6, 13);
   u8g2.print(freqString);
-  u8g2.print(" MHz");
+  u8g2.print("MHz");
   u8g2.setFont(u8g2_font_6x10_tf);
-
-
   u8g2.sendBuffer();
 }
 
@@ -507,8 +498,7 @@ void calibrate()
           if (++xtalOffset > 10000) {
             xtalOffset = 0;
           }
-        }
-        else {
+        } else {
           if (--xtalOffset < -10000) {
             xtalOffset = 0;
           }
@@ -554,7 +544,8 @@ void loop()
   if (dbm != dbm_old) {
     updateDisplay();
     dbm_old = dbm;
-    SetFreq(Freq);
+    long f = Freq;
+    SetFreq();
   }
 
   if (digitalRead(ADF5355_MUX) == HIGH)   // select lock/unlock
@@ -582,7 +573,8 @@ void loop()
   rotary_enc();
   if (Freq != Freq_Old) {
     updateDisplay();   //
-    SetFreq(Freq);
+    long f = Freq;
+    SetFreq();
     updateDisplay();   // // needs second update to stop encoders interacting ???///
     Freq_Old = Freq;
   }
@@ -615,14 +607,14 @@ void rotary_enc()
     if ((!encoder_A) && (encoder_A_prev)) {
       if (encoder_B) {
         Freq = Freq + ChanStep;
-        if (Freq > 1360000000) {
-          Freq = 5400000;
+        if (Freq > MAX_ADF5355) {
+          Freq = MIN_ADF5355;
         }
       }
       else {
         Freq = Freq - ChanStep;
-        if (Freq < 5400000) {
-          Freq = 1360000000;
+        if (Freq < MIN_ADF5355) {
+          Freq = MAX_ADF5355;
         }
       }
     }
@@ -640,10 +632,10 @@ void rotary_enc2()
     encoder_B2 = digitalRead(pin_B2);
     if ((!encoder_A2) && (encoder_A2_prev)) {
       if (encoder_B2) {
-        ChanStep = ChanStep * CHAN_STEP;
+        ChanStep = ChanStep * CHAN_STEP_SIZE;
       }
       else {
-        ChanStep = ChanStep / CHAN_STEP;
+        ChanStep = ChanStep / CHAN_STEP_SIZE;
       }
       delay(100);
     }
@@ -651,11 +643,11 @@ void rotary_enc2()
     loopTime2 = currentTime;         // Updates loopTime
   }
   // Serial.println(cnt_step);
-  if (ChanStep > 100000000) {
-    ChanStep = MIN_CHAN_STEP;
+  if (ChanStep > MAX_STEP) {
+    ChanStep = MIN_STEP;
   }
-  if (ChanStep < 100 ) {
-    ChanStep = MAX_CHAN_STEP;
+  if (ChanStep < MIN_STEP ) {
+    ChanStep = MAX_STEP;
   }
 }
 
@@ -765,6 +757,5 @@ char * floatToString(char * outstr, double val, byte precision, byte widthp) {
     strcat(temp, outstr);
     strcpy(outstr, temp);
   }
-
   return outstr;
 }
