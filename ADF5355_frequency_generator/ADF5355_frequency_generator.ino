@@ -3,13 +3,13 @@
 // Based on that of DD7LP and GM8BJF (See below) with minor
 // modifications by GI1MIC to run on a STM32F103CB/C8 Bluepill.
 //
-// The code changes were originally required because the original code
+// The code changes originally required because the base code
 // kept locking up on SPI writes.
 //
-// The following code is based on using the onboard ADF5355 25Mhz clock
+// The following is based on using the onboard ADF5355 25Mhz clock
 //
-// Since the 25Mhz clock on my board was closer to 24.99395Mhz I added
-// a calibration feature. The current calibration offset is shown
+// Since my onboard 25Mhz clock was closer to 24.99395Mhz I added
+// a calibration feature. The current stored calibration offset is shown
 // during start-up.
 //
 // To change the offset, press the frequency switch during power on and
@@ -22,16 +22,19 @@
 // Calibration can be accomplished  against a known receiver (higher the
 // known RX frequency the better)
 //
-// The board I use was programmed with the maple DFU
+// The board I use has been programmed with a maple DFU
 // bootloader for ease of programming.
 //
-// The Arduino IDE (V1.8.13) was configured for a generic SMT32F1xx
+// Debounce capacitors, 10nf - 100nf, may be requred between the encoder/buttton inputs to ground.
+// See https://github.com/enjoyneering/RotaryEncoder for a nice graphic of how to connect them to the encoder.
+//
+// The Arduino IDE (V1.8.13) was configured for a generic SMT32F1xx (BluePill F103CB 128K)
 //
 // Blue pill Pins:
 // Encoder 1 Clk - PB11, DT - PB10, SWT - PB1, + - 3.3V, GND - GND
 // Encoder 2 Clk - PA3, DT - PA2, SWT - PA1, + - 3.3V, GND - GND
 // I2C OLED  SDA - PB7, SCL - PB6, + - 3.3V, GND - GND
-// ADF5355  CLK-PA5, MUX-PB0, LE-PA4, DAT-PA7, 3.3V - 3.3V, GND - GND, Barrel Jack - 6V (or 5V on the Bluepill)
+// ADF5355  CLK-PA5, MUX-PB0, LE-PA4, DAT-PA7, 3.3V - 3.3V, GND - GND, Barrel Jack - 6V (or 5V from the Bluepill)
 //
 //
 // Version 2.4 Simplified more code and tidy up of on-screen formatting
