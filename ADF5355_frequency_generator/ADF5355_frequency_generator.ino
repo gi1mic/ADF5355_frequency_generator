@@ -34,6 +34,8 @@
 // ADF5355  CLK-PA5, MUX-PB0, LE-PA4, DAT-PA7, 3.3V - 3.3V, GND - GND, Barrel Jack - 6V (or 5V on the Bluepill)
 //
 //
+// Version 2.4 Simplified more code and tidy up of on-screen formatting
+//
 // Version 2.3 Simplified dbm and preset frequency selection code
 //
 // Version 2.2 Simplified frequency step code to fix 1Khz selection
@@ -75,6 +77,7 @@
 U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, PB6, PB7);
 
 
+
 unsigned long currentTime;
 unsigned long loopTime;
 const int pin_A = PB11;  // pin 0
@@ -107,11 +110,17 @@ int cnt_fix_old;
 int dbm = 0;
 int dbm_old;
 
+
+#define INIT_CHAN_STEP 10000    // Initial channel step = 100.0 Khz
+#define CHAN_STEP 10            // Chan step multiplier (up and down)
+#define MIN_CHAN_STEP 100       // Minimum channel step frequency
+#define MAX_CHAN_STEP 100000000 // Max channel step frequency
+
 long Freq = 14520000;  // Start-up frequency
 long Freq_Old;
 long refin =  2500000;      // XTAL freq (corrected for my on board 25Mhz xtal)
 long xtalOffset = 0;
-long ChanStep = 10000;      // Initial channel step = 100.0 Khz
+long ChanStep = INIT_CHAN_STEP;
 long ChanStep_old;
 unsigned long Reg[13];      // ADF5355 Reg's
 
@@ -436,6 +445,8 @@ void updateDisplay() {
   u8g2.print( " dBm");
 
   //*********************Display tuning step size *************************
+  unsigned int freq; // Needs because Arduino printf cannot handle floats correctly
+  
   //  display.setTextColor(WHITE);
   u8g2.setDrawColor(1);
   u8g2.setCursor( 8, 62);
@@ -446,16 +457,16 @@ void updateDisplay() {
   u8g2.setDrawColor(1);
   u8g2.setCursor( 60, 62);
   if (ChanStep2 < 100)
-  { u8g2.print(ChanStep2 / 0.1, 0);
-    u8g2.print(" Hz");
+  { freq = ChanStep2 / 0.1;
+    u8g2.printf("%4u Hz", freq);
   }
   else if (ChanStep2 < 100000)
-  { u8g2.print(ChanStep2 / 100, 0);
-    u8g2.print(" KHz");
+  {freq = ChanStep2 / 100;
+    u8g2.printf("%4u KHz", freq);
   }
   else
-  { u8g2.print(ChanStep2 / 100000, 0);
-    u8g2.print(" MHz");
+  {freq = ChanStep2 / 100000;
+   u8g2.printf("%4u MHz", freq);
   }
 
   //**********************Display frequency***************************
@@ -466,8 +477,8 @@ void updateDisplay() {
   u8g2.setDrawColor(0);
   u8g2.drawBox(0, 15, 128, 16);
   u8g2.setDrawColor(1);
-  u8g2.setCursor( 20, 30);
-  u8g2.print(Freq2, 6);
+  u8g2.setCursor( 30, 30);
+  u8g2.print(Freq2, 3);
   if (Freq2 < 1000)
     u8g2.print(" MHz");
   else
@@ -632,10 +643,10 @@ void rotary_enc2()
     encoder_B2 = digitalRead(pin_B2);
     if ((!encoder_A2) && (encoder_A2_prev)) {
       if (encoder_B2) {
-        ChanStep = ChanStep * 10;
+        ChanStep = ChanStep * CHAN_STEP;
       }
       else {
-        ChanStep = ChanStep / 10;
+        ChanStep = ChanStep / CHAN_STEP;
       }
       delay(100);
     }
@@ -644,10 +655,10 @@ void rotary_enc2()
   }
   // Serial.println(cnt_step);
   if (ChanStep > 100000000) {
-    ChanStep = 100;
+    ChanStep = MIN_CHAN_STEP;
   }
   if (ChanStep < 100 ) {
-    ChanStep = 100000000;
+    ChanStep = MAX_CHAN_STEP;
   }
 }
 
