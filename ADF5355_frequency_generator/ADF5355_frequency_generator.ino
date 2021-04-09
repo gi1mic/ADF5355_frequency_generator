@@ -450,12 +450,12 @@ void updateDisplay() {
   //  display.setTextColor(WHITE);
   u8g2.setDrawColor(1);
   u8g2.setCursor( 8, 62);
-  u8g2.print("Step = ");
+  u8g2.print("Step Inc = ");
   float ChanStep2 = ChanStep;
   u8g2.setDrawColor(0);
-  u8g2.drawBox(40, 53, 100, 16);
+  u8g2.drawBox(70, 53, 100, 16);
   u8g2.setDrawColor(1);
-  u8g2.setCursor( 60, 62);
+  u8g2.setCursor( 70, 62);
   if (ChanStep2 < 100)
   { freq = ChanStep2 / 0.1;
     u8g2.printf("%4u Hz", freq);
