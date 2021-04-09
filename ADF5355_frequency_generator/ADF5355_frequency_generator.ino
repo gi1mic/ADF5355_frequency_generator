@@ -445,44 +445,38 @@ void updateDisplay() {
   u8g2.print( " dBm");
 
   //*********************Display tuning step size *************************
-  unsigned int freq; // Needs because Arduino printf cannot handle floats correctly
-  
-  //  display.setTextColor(WHITE);
+
   u8g2.setDrawColor(1);
   u8g2.setCursor( 8, 62);
   u8g2.print("Step Inc = ");
-  float ChanStep2 = ChanStep;
   u8g2.setDrawColor(0);
   u8g2.drawBox(70, 53, 100, 16);
   u8g2.setDrawColor(1);
   u8g2.setCursor( 70, 62);
-  if (ChanStep2 < 100)
-  { freq = ChanStep2 / 0.1;
-    u8g2.printf("%4u Hz", freq);
-  }
-  else if (ChanStep2 < 100000)
-  {freq = ChanStep2 / 100;
-    u8g2.printf("%4u KHz", freq);
-  }
-  else
-  {freq = ChanStep2 / 100000;
-   u8g2.printf("%4u MHz", freq);
+  if (ChanStep < 100) {
+    u8g2.printf("%4u Hz", ChanStep * 10 );
+  } else if (ChanStep < 100000) {
+    u8g2.printf("%4u KHz", ChanStep / 100);
+  } else {
+    u8g2.printf("%4u MHz", ChanStep / 100000);
   }
 
   //**********************Display frequency***************************
-  double Freq2;
-  Freq2 = Freq;
-  Freq2 = Freq2 / 100000;
+
+  double locFreq = Freq;
+  locFreq = locFreq / 100000;
 
   u8g2.setDrawColor(0);
   u8g2.drawBox(0, 15, 128, 16);
   u8g2.setDrawColor(1);
-  u8g2.setCursor( 30, 30);
-  u8g2.print(Freq2, 3);
-  if (Freq2 < 1000)
-    u8g2.print(" MHz");
-  else
-    u8g2.print(" KHz");
+  u8g2.setCursor( 00, 31);
+  u8g2.setFont(u8g2_font_courB12_tr);
+  char freqString [20];
+  floatToString(freqString, locFreq , 3, 9);
+  u8g2.print(freqString);
+  u8g2.print(" MHz");
+  u8g2.setFont(u8g2_font_6x10_tf);
+
 
   u8g2.sendBuffer();
 }
@@ -706,3 +700,68 @@ void pwr_select()
   }
 }
 //////////////////////////////////////////////////////////////////////////////////////
+
+// See https://forum.arduino.cc/index.php/topic,37391.0.html#12
+char * floatToString(char * outstr, double val, byte precision, byte widthp) {
+  char temp[16];
+  byte i;
+
+  // compute the rounding factor and fractional multiplier
+  double roundingFactor = 0.5;
+  unsigned long mult = 1;
+  for (i = 0; i < precision; i++)
+  {
+    roundingFactor /= 10.0;
+    mult *= 10;
+  }
+
+  temp[0] = '\0';
+  outstr[0] = '\0';
+
+  if (val < 0.0) {
+    strcpy(outstr, "-\0");
+    val = -val;
+  }
+
+  val += roundingFactor;
+
+  strcat(outstr, itoa(int(val), temp, 10)); //prints the int part
+  if ( precision > 0) {
+    strcat(outstr, ".\0"); // print the decimal point
+    unsigned long frac;
+    unsigned long mult = 1;
+    byte padding = precision - 1;
+    while (precision--)
+      mult *= 10;
+
+    if (val >= 0)
+      frac = (val - int(val)) * mult;
+    else
+      frac = (int(val) - val ) * mult;
+    unsigned long frac1 = frac;
+
+    while (frac1 /= 10)
+      padding--;
+
+    while (padding--)
+      strcat(outstr, "0\0");
+
+    strcat(outstr, itoa(frac, temp, 10));
+  }
+
+  // generate space padding
+  if ((widthp != 0) && (widthp >= strlen(outstr))) {
+    byte J = 0;
+    J = widthp - strlen(outstr);
+
+    for (i = 0; i < J; i++) {
+      temp[i] = ' ';
+    }
+
+    temp[i++] = '\0';
+    strcat(temp, outstr);
+    strcpy(outstr, temp);
+  }
+
+  return outstr;
+}
