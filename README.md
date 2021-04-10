@@ -2,6 +2,8 @@
 
 ADF5355 Bluepill Frequency Generator
 
+![alt text](https://github.com/gi1mic/ADF5355_frequency_generator/blob/main/images/screenShot.jpg?raw=true)
+
 This is code that allows an ADF5355 module to be used as a signal generator from 52Mhz to 1,3600MHz 
 
 The code is based on that of GM8BJF (https://github.com/gm8bjf/ADF5355_sig_gen) which in-turn was based on code from DD7LP.
