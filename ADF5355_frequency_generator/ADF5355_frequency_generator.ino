@@ -504,7 +504,7 @@ void updateDisplay() {
   } else if (dbm == 2) {
     u8g2.print("+2");
   } else if (dbm == 3) {
-    u8g2.print("-5");
+    u8g2.print("+5");
   }
   u8g2.print( " dBm");
 
