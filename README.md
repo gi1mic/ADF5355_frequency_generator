@@ -11,7 +11,7 @@ The code is based on that of GM8BJF (https://github.com/gm8bjf/ADF5355_sig_gen) 
 I originally took on the task of modifying GM8BJF's code because it did not work on my board. His code kept locking up on SPI writes even though it appeared correct (fake STM32?). I also wanted to use a different, larger,  display plus the on-board ADF5355 25Mhz clock rather than an external clock.
 
 The code now runs on a generic STM32F103CB/C8 "Bluepill" with a 1.3" 128x64 OLED display (SH1106 chip set). The code changes
-involved moving to the u8g2 library which makes it easier to use alternative displays.
+involved moving to the u8g2 library which makes it easier to use alternative displays and changing the encoders inteface to use interrupts so they have smoother control.
 
 Once using the generator I found the ADF5355 on-board 25Mhz XTAL was actually closer to 24.99395Mhz. So to get around this problem I added a calibration feature allowing an offset to be set and stored in flash. The active calibration offset is shown during start-up.
 
