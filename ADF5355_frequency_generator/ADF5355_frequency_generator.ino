@@ -19,11 +19,9 @@
 //
 // The offset is stored in internal eeprom.
 //
-// Calibration can be accomplished  against a known receiver (higher the
-// known RX frequency the better)
+// Calibration can be accomplished  against a known receiver (higher the known RX frequency the better)
 //
-// The board I use has been programmed with a maple DFU
-// bootloader for ease of programming.
+// The board I use has been programmed with a maple DFU bootloader for ease of programming.
 //
 // Debounce capacitors, 10nf - 100nf, may be requred between the encoder/buttton inputs to ground.
 // See https://github.com/enjoyneering/RotaryEncoder for a nice graphic of how to connect them to the encoder.
@@ -34,8 +32,10 @@
 // Encoder 1 Clk - PB11, DT - PB10, SWT - PB1, + - 3.3V, GND - GND
 // Encoder 2 Clk - PA3, DT - PA2, SWT - PA1, + - 3.3V, GND - GND
 // I2C OLED  SDA - PB7, SCL - PB6, + - 3.3V, GND - GND
-// ADF5355  CLK-PA5, MUX-PB0, LE-PA4, DAT-PA7, 3.3V - 3.3V, GND - GND, Barrel Jack - 6V (or 5V from the Bluepill)
+// ADF5355  CLK-PA5, MUX-PB0, LE-PA4, DAT-PA7, 3.3V - 3.3V, GND - GND, Barrel Jack - 6V (5V from the Bluepill seems to work)
 //
+//
+// Version 2.6 Simplified the code and switched to using interrupts for the encoders.
 //
 // Version 2.5 Added support for steps in Hz. Changed internal code frequencies to be in Hz rather than the Hz/10 of the original code.
 //
@@ -68,7 +68,7 @@
 // Achtung, kommerzielle Verwertung diese Software ist nicht gestattet bedarf der schriftlichen Zustimmmmung der Autoren, bzw Programmierer *****
 //***********************************************************************************************************************************************
 
-#include <RotaryEncoder.h>   //************https://github.com/mathertel/RotaryEncoder/blob/master/RotaryEncoder.h
+#include <RotaryEncoder.h>   // Install mathertel's library using the library manager or https://github.com/mathertel/RotaryEncoder)
 #include <U8g2lib.h>         // *** Install from library manager *****//
 #ifdef U8X8_HAVE_HW_SPI
 #include <SPI.h>
@@ -82,70 +82,210 @@
 U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, PB6, PB7);
 
 #define START_FREQ 145400000  // Start-up frequency
-
 #define INIT_STEP       1000000 // Initial channel step
 #define CHAN_STEP_SIZE       10 // Chan step multiplier (up and down)
 #define MIN_STEP              1 // Minimum  step frequency
 #define MAX_STEP     1000000000 // Max  step frequency
-
 #define MIN_ADF5355    54000000 // Lowest ADF5355 freq
 #define MAX_ADF5355  1360000000 // Highest ADF5355 freq
 
-unsigned long currentTime;
-unsigned long loopTime;
-const int pin_A = PB11;  // pin 0
-const int pin_B = PB10;  // pin 1
-unsigned char encoder_A;
-unsigned char encoder_B;
-unsigned char encoder_A_prev = 0;
 
-unsigned long loopTime2;
-const int pin_A2 = PA3;  // pin 8
-const int pin_B2 = PA2;  // pin 9
-unsigned char encoder_A2;
-unsigned char encoder_B2;
-unsigned char encoder_A2_prev = 0;
+unsigned long startTime = millis(); // Grap the current system clock time during startup
 
-const int switch1 = PB1;
-const int switch2 = PA1;
+const int pin_encoderFreqA = PB11;  // pin 0
+const int pin_encoderFreqB = PB10;  // pin 1
+unsigned char encoder_Freq_prev = 0;
 
-const int longPress1 = PB4;      // Output for long press on rotary encoder
-const int longPress2 = PB3;      // Output for long press on rotary encoder
+const int pin_stepA = PA3;  // pin 8
+const int pin_stepB = PA2;  // pin 9
+unsigned char encoderStep_prev = 0;
+
+// Note: You may need to change the last parm from FOUR3 to TWO03 depending on the encoder steps per latch 
+RotaryEncoder encoderFreq(pin_encoderFreqA, pin_encoderFreqB, RotaryEncoder::LatchMode::FOUR3);
+RotaryEncoder encoderStep(pin_stepA,        pin_stepB,        RotaryEncoder::LatchMode::FOUR3);
+
+const int switchFreq = PB1;
+const int switchStep = PA1;
+
+const int encoderFrequencyButton = PB4;      // Output for long press on rotary encoder
+const int encoderStepButton = PB3;      // Output for long press on rotary encoder
 const int clockSource = PB5;      // Output for long press on rotary encoder
 
 const int slaveSelectPin = PA4;  // SPI-SS bzw. enable ADF4350  wurde von mir von pin 3 auf pin 10 geändert
 const int ADF5355_MUX = PB0;
 
-boolean mrk1, mrk1_old, mrk2, mrk2_old, externalClk = 0;
+boolean mrk1, mrk1_old = 0;
 
 int cnt_fix = 4;
-int cnt_fix_old;
 int dbm = 0;
-int dbm_old;
 
 double Freq = START_FREQ;
-double Freq_Old;
 long refin =  2500000;      // XTAL freq (corrected for my on board 25Mhz xtal)
 long xtalOffset = 0;
 long ChanStep = INIT_STEP;
-long ChanStep_old;
 unsigned long Reg[13];      // ADF5355 Reg's
 
 const double freqPresets[] = {   // Array to hold the preset frequencies add or remove frequencies as required
-     52000000, // 52.0 MHz
-     70100000, // 70.1 MHz
-    144200000, // 144.2 MHz
-    145400000, // 145.4 MHz
-    432900000, // 432.9 MHz
-   1296900000, // 1296.9 MHz
-   2320900000, // 2320.9 MHz
-   3456100000, // 3456.1 MHz
-   5760500000, // 5760.5 MHz
+  52000000, // 52.0 MHz
+  70100000, // 70.1 MHz
+  144200000, // 144.2 MHz
+  145400000, // 145.4 MHz
+  432900000, // 432.9 MHz
+  1296900000, // 1296.9 MHz
+  2320900000, // 2320.9 MHz
+  3456100000, // 3456.1 MHz
+  5760500000, // 5760.5 MHz
   10368100000  // 10368.1  MHz
 };
 
+//////////////////////// Encoder Interrupt routine  ////////////////////////////////////////////////
+void checkPositionFreq()
+{
+  encoderFreq.tick(); // just call tick() to check the state.
+}
+
+//////////////////////// Encoder Interrupt routine  ////////////////////////////////////////////////
+void checkPositionStep()
+{
+  encoderStep.tick(); // just call tick() to check the state.
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//                                      Setup                               //
+//////////////////////////////////////////////////////////////////////////////
+void setup() {
+
+  u8g2.begin();
+
+  // Screen mask - static text
+  u8g2.clearBuffer();
+  u8g2.setDrawColor(1);
+  u8g2.setFont(u8g2_font_crox5hb_tr);
+  u8g2.setCursor(20, 32);;
+  u8g2.print("GI1MIC");    // Change as required
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.sendBuffer();
+  delay(2000);
+  // Draw lines
+  u8g2.clearBuffer();
+  u8g2.setDrawColor(1);
+  u8g2.drawLine(0, 14, 128, 14);
+  u8g2.drawLine(0, 38, 128, 38);
+
+  SPI.begin();  // Start SPI for ADF5355
+
+  attachInterrupt(digitalPinToInterrupt(pin_encoderFreqA), checkPositionFreq, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(pin_encoderFreqB), checkPositionFreq, CHANGE);
+
+  attachInterrupt(digitalPinToInterrupt(pin_stepA), checkPositionStep, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(pin_stepB), checkPositionStep, CHANGE);
+
+  pinMode(encoderFrequencyButton, OUTPUT);
+  digitalWrite(encoderFrequencyButton, LOW);
+
+  pinMode(encoderStepButton, OUTPUT);
+  digitalWrite(encoderStepButton, LOW);
+
+  pinMode (slaveSelectPin, OUTPUT);
+  digitalWrite(slaveSelectPin, LOW);
+
+  pinMode(clockSource, INPUT_PULLUP);
+
+  pinMode(switchFreq, INPUT_PULLUP);     // 2 fix channel select
+  pinMode(switchStep, INPUT_PULLUP);     // 10 power select
+
+  pinMode(ADF5355_MUX, INPUT_PULLUP);    // lock/unlock
+  pinMode(14, INPUT_PULLUP);    // intref/extref via #A0  *************************Pin für int/ext Referenz *******************
+  pinMode(16, INPUT_PULLUP);    // intref/extref via #A7 !!!! NB DIFFERENT FOR DUE !!!!
+
+  // If freq button pressed during boot allow calibration data to be changed
+  // else display what was saved and adjust 'refin' as needed
+  EEPROM.get(0, xtalOffset);
+
+  if (digitalRead(switchFreq) == LOW) {
+    calibration();
+  } else {
+    u8g2.setDrawColor(0);
+    u8g2.drawBox(0, 15, 128, 16);
+    u8g2.setDrawColor(1);
+    u8g2.setCursor(5, 30);
+    u8g2.print("Xtal Offset: ");
+    u8g2.print(xtalOffset, DEC);
+    u8g2.print(" Khz");
+    u8g2.sendBuffer();
+    delay(3000);
+  }
+  refin -= xtalOffset;
+  updateDisplay();
+
+}
 
 
+
+////////////////////////////////////////////////////////////////////////
+//                      MAIN PROGRAM LOOP                        //
+////////////////////////////////////////////////////////////////////////
+void loop()
+{
+  
+  // Process frequency encoder
+  if (rotary_encFreq()) {
+    long f = Freq;
+    SetFreq();
+    updateDisplay();
+  }
+
+  // Process step encoder
+  if (rotary_encStep()) {
+    updateDisplay();
+  }
+
+  // Process freq button
+  if (fixfrq_select()) {
+    updateDisplay();
+  }
+
+  // Process power button
+  if (  pwr_select()) {
+    updateDisplay();
+    long f = Freq;
+    SetFreq();
+  }
+
+  // Update lock/unlock status
+  if (digitalRead(ADF5355_MUX) == HIGH) {
+    mrk1 = 1;
+  } else {
+    mrk1 = 0;
+  }
+
+  if (mrk1 != mrk1_old) {
+    u8g2.setDrawColor(0);
+    u8g2.drawBox(0, 0, 64, 12);
+    u8g2.setDrawColor(1);
+    u8g2.setCursor( 0, 7);
+    if (digitalRead(ADF5355_MUX) == HIGH)
+      u8g2.print("Locked");
+    else
+      u8g2.print("Unlocked");
+    u8g2.sendBuffer();
+  }
+  mrk1_old = mrk1;
+
+  // Update display
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(64, 0, 128, 12);
+  u8g2.setDrawColor(1);
+  u8g2.setCursor( 100, 7);
+  if (digitalRead(clockSource)) {
+    u8g2.print("Int");
+  } else {
+    u8g2.print("Ext");
+  }
+  u8g2.sendBuffer();
+}
+
+//*************************** End of main loop  ********************************************
 
 ///////////////////////// Subroutine: Set Frequency ADF5355 ///////////////////////////
 void SetFreq()
@@ -167,7 +307,7 @@ void SetFreq()
   Write_ADF_Reg(0);
 }
 
-////////////////////////// Part-Subroutine ADF5355 ////////////////////////////
+////////////////////////// ADF5355 write register ////////////////////////////
 void Write_ADF_Reg(int idx)
 { // make 4 byte from integer for SPI-Transfer
   byte buf[4];
@@ -190,7 +330,7 @@ void Write_ADF_Reg(int idx)
 }
 
 
-////////////////////////////// Sub-Subroutine ADF5355 //////////////////////////
+////////////////////////////// Calculate ADF5355 registers based on requested frequency  //////////////////////////
 void ConvertFreq(unsigned long R[])
 ////  Declare variables for registers/////
 {
@@ -349,81 +489,9 @@ void ConvertFreq(unsigned long R[])
   R[12] = (unsigned long) (0x1041C);
 }
 
-//////////////////////////////////////////////////////////////////////////////
-//                                      Setup                               //
-//////////////////////////////////////////////////////////////////////////////
-void setup() {
-
-  u8g2.begin();
-
-  // ******************Screen mask static text*****************
-  u8g2.clearBuffer();
-
-  u8g2.setDrawColor(1);
-  u8g2.setFont(u8g2_font_crox5hb_tr);
-  u8g2.setCursor(20, 32);;
-  u8g2.print("GI1MIC");    // Change as required
-  u8g2.setFont(u8g2_font_6x10_tf);
-  u8g2.sendBuffer();
-
-  delay(2000);
-
-  // Draw lines
-  u8g2.clearBuffer();
-  u8g2.setDrawColor(1);
-  u8g2.drawLine(0, 14, 128, 14);
-  u8g2.drawLine(0, 38, 128, 38);
-
-  SPI.begin();  // Start SPI for ADF5355
-  pinMode (slaveSelectPin, OUTPUT);
-  digitalWrite(slaveSelectPin, LOW);
-
-  pinMode(pin_A, INPUT_PULLUP);
-  pinMode(pin_B, INPUT_PULLUP);
-  pinMode(pin_A2, INPUT_PULLUP);
-  pinMode(pin_B2, INPUT_PULLUP);
-
-  pinMode(longPress1, OUTPUT);
-  digitalWrite(longPress1, LOW);
-
-  pinMode(longPress2, OUTPUT);
-  digitalWrite(longPress2, LOW);
-
-  pinMode(clockSource, INPUT_PULLUP);
-
-  pinMode(switch1, INPUT_PULLUP);     // 2 fix channel select
-  pinMode(switch2, INPUT_PULLUP);     // 10 power select
-  pinMode(ADF5355_MUX, INPUT_PULLUP);    // lock/unlock
-  pinMode(14, INPUT_PULLUP);    // intref/extref via #A0  *************************Pin für int/ext Referenz *******************
-  pinMode(16, INPUT_PULLUP);    // intref/extref via #A7 !!!! NB DIFFERENT FOR DUE !!!!
-
-  currentTime = millis();
-  loopTime = currentTime;
-  loopTime2 = currentTime;
-
-  // If freq button pressed during boot allow calibration data to be changed
-  // else display what was saved and adjust 'refin' as needed
-  EEPROM.get(0, xtalOffset);
-
-  if (digitalRead(switch1) == LOW) {
-    calibrate();
-  } else {
-    u8g2.setDrawColor(0);
-    u8g2.drawBox(0, 15, 128, 16);
-    u8g2.setDrawColor(1);
-    u8g2.setCursor(5, 30);
-    u8g2.print("Xtal Offset: ");
-    u8g2.print(xtalOffset, DEC);
-    u8g2.print(" Khz");
-    u8g2.sendBuffer();
-    delay(3000);
-  }
-  refin -= xtalOffset;
-}
-
-// *********************** Subroutine: update Display  **************************
+//////////////////////// update Display  ////////////////////////////////////////////////
 void updateDisplay() {
-//*********************Display dBm *************************
+  // Display dBm
   u8g2.setDrawColor(0);
   u8g2.drawBox(8, 40, 128, 12);
   u8g2.setDrawColor(1);
@@ -440,8 +508,7 @@ void updateDisplay() {
   }
   u8g2.print( " dBm");
 
-  //*********************Display tuning step size *************************
-
+  // Display tuning step size
   u8g2.setDrawColor(1);
   u8g2.setCursor( 8, 62);
   u8g2.print("Step Inc = ");
@@ -457,8 +524,7 @@ void updateDisplay() {
     u8g2.printf("%4u MHz", ChanStep / 1000000);
   }
 
-  //**********************Display frequency***************************
-
+  // Display frequency
   double locFreq = Freq;
   locFreq = locFreq / 1000000;
 
@@ -475,8 +541,8 @@ void updateDisplay() {
   u8g2.sendBuffer();
 }
 
-////////////////////////////////////////////////////////////////////////
-void calibrate()
+//////////////////////// Calibration  ////////////////////////////////////////////////
+void calibration()
 {
   u8g2.setDrawColor(0);
   u8g2.drawBox(0, 15, 128, 16);
@@ -488,24 +554,25 @@ void calibrate()
   u8g2.sendBuffer();
   delay(1000);
 
-  while (digitalRead(switch1) == HIGH) {
-    currentTime = millis();
-    if (currentTime >= (loopTime + 2)) {
-      encoder_A = digitalRead(pin_A);
-      encoder_B = digitalRead(pin_B);
-      if ((!encoder_A) && (encoder_A_prev)) {
-        if (encoder_B) {
-          if (++xtalOffset > 10000) {
-            xtalOffset = 0;
-          }
-        } else {
-          if (--xtalOffset < -10000) {
-            xtalOffset = 0;
-          }
+  while (digitalRead(switchFreq) == HIGH) {
+    unsigned long currentTime = millis();
+    if (currentTime >= (startTime + 2)) {
+      int encoder = encoderFreq.getPosition();
+      if (encoder_Freq_prev != encoder) {
+        int dir = (int)encoderFreq.getDirection();
+        if ( dir == 1)
+          ++xtalOffset;
+        if ( dir == -1) {
+          --xtalOffset;
         }
+        if (xtalOffset > 10000) {
+          xtalOffset = 0;
+        }
+        if (xtalOffset < -10000) {
+          xtalOffset = 0;
+        }
+        encoder_Freq_prev = encoder;     // Store value of A for next time
       }
-      encoder_A_prev = encoder_A;     // Store value of A for next time
-      loopTime = currentTime;         // Updates loopTime
       u8g2.setDrawColor(0);
       u8g2.drawBox(0, 15, 128, 16);
       u8g2.setDrawColor(1);
@@ -514,155 +581,74 @@ void calibrate()
       u8g2.print(xtalOffset, DEC);
       u8g2.print(" KHz");
       u8g2.sendBuffer();
-      u8g2.sendBuffer();
     }
   }
-
   EEPROM.put(0, xtalOffset);
 }
 
-////////////////////////////////////////////////////////////////////////
-//                      MAIN PROGRAM LOOP                        //
-////////////////////////////////////////////////////////////////////////
-void loop()
+
+/////////////////////////////// Frequency select /////////////////////////////////
+bool rotary_encFreq()
 {
-  rotary_enc2();
-  if (ChanStep != ChanStep_old) {
-    updateDisplay();
-    //  delayMicroseconds(250);
-    updateDisplay();   // needs second update to stop encoders interacting ???///
-    ChanStep_old = ChanStep;
-  }
+  int encoder = encoderFreq.getPosition();
 
-  fixfrq_select();
-  if (cnt_fix != cnt_fix_old) {
-    updateDisplay();
-    cnt_fix_old = cnt_fix;
-  }
-
-  pwr_select();
-  if (dbm != dbm_old) {
-    updateDisplay();
-    dbm_old = dbm;
-    long f = Freq;
-    SetFreq();
-  }
-
-  if (digitalRead(ADF5355_MUX) == HIGH)   // select lock/unlock
-  {
-    mrk1 = 1;
-  } else {
-    mrk1 = 0;
-  }
-  //*************************
-
-  if (mrk1 != mrk1_old) {
-    u8g2.setDrawColor(0);
-    u8g2.drawBox(0, 0, 64, 12);
-    u8g2.setDrawColor(1);
-    u8g2.setCursor( 0, 7);
-    if (digitalRead(ADF5355_MUX) == HIGH)
-      u8g2.print("Locked");
-    else
-      u8g2.print("Unlocked");
-    u8g2.sendBuffer();
-  }
-
-  mrk1_old = mrk1;
-
-  rotary_enc();
-  if (Freq != Freq_Old) {
-    updateDisplay();   //
-    long f = Freq;
-    SetFreq();
-    updateDisplay();   // // needs second update to stop encoders interacting ???///
-    Freq_Old = Freq;
-  }
-
-  //*********************Display clk source *************************
-
-  // Update clock source on display
-  u8g2.setDrawColor(0);
-  u8g2.drawBox(64, 0, 128, 12);
-  u8g2.setDrawColor(1);
-  u8g2.setCursor( 100, 7);
-  if (digitalRead(clockSource)) {
-    u8g2.print("Int");
-  } else {
-    u8g2.print("Ext");
-  }
-  u8g2.sendBuffer();
-
-}
-
-//*************************** End of main loop  ********************************************
-
-/////////////////////////////// Subroutine: Frequency select /////////////////////////////////
-void rotary_enc()
-{
-  currentTime = millis();
-  if (currentTime >= (loopTime + 2)) {
-    encoder_A = digitalRead(pin_A);
-    encoder_B = digitalRead(pin_B);
-    if ((!encoder_A) && (encoder_A_prev)) {
-      if (encoder_B) {
-        Freq = Freq + ChanStep;
-        if (Freq > MAX_ADF5355) {
-          Freq = MIN_ADF5355;
-        }
-      }
-      else {
-        Freq = Freq - ChanStep;
-        if (Freq < MIN_ADF5355) {
-          Freq = MAX_ADF5355;
-        }
-      }
+  if (encoder_Freq_prev != encoder) {
+    int dir = (int)encoderFreq.getDirection();
+    if ( dir == 1) {
+      Freq = Freq + ChanStep;
     }
-    encoder_A_prev = encoder_A;     // Store value of A for next time
-    loopTime = currentTime;         // Updates loopTime
-  }
-}
-
-/////////////////////////////// Subroutine: Step select ////////////////////////////////
-void rotary_enc2()
-{
-  currentTime = millis();
-  if (currentTime >= (loopTime2 + 2)) {
-    encoder_A2 = digitalRead(pin_A2);
-    encoder_B2 = digitalRead(pin_B2);
-    if ((!encoder_A2) && (encoder_A2_prev)) {
-      if (encoder_B2) {
-        ChanStep = ChanStep * CHAN_STEP_SIZE;
-      }
-      else {
-        ChanStep = ChanStep / CHAN_STEP_SIZE;
-      }
-      delay(100);
+    if ( dir == -1) {
+      Freq = Freq - ChanStep;
     }
-    encoder_A2_prev = encoder_A2;     // Store value of A for next time
-    loopTime2 = currentTime;         // Updates loopTime
+    if (Freq > MAX_ADF5355) {
+      Freq = MIN_ADF5355;
+    }
+    if (Freq < MIN_ADF5355) {
+      Freq = MAX_ADF5355;
+    }
+    encoder_Freq_prev = encoderFreq.getPosition();     // Store for next time
+    return true;
   }
-  // Serial.println(cnt_step);
-  if (ChanStep > MAX_STEP) {
-    ChanStep = MIN_STEP;
-  }
-  if (ChanStep < MIN_STEP ) {
-    ChanStep = MAX_STEP;
-  }
+  return false;
 }
 
-/////////////////////////// Subroutine: Fixed frequency select ////////////////////////////
-void fixfrq_select()
+/////////////////////////////// Step select ////////////////////////////////
+bool rotary_encStep()
+{
+  int encoder = encoderStep.getPosition();
+
+  if (encoderStep_prev != encoder) {
+    int dir = (int)encoderStep.getDirection();
+    if ( dir == 1) {
+      ChanStep = ChanStep * CHAN_STEP_SIZE;
+    } // Ignore 0 case
+    if (dir == -1) {
+      ChanStep = ChanStep / CHAN_STEP_SIZE;
+    }
+    if (ChanStep > MAX_STEP) {
+      ChanStep = MIN_STEP;
+    }
+    if (ChanStep < MIN_STEP ) {
+      ChanStep = MAX_STEP;
+    }
+    encoderStep_prev = encoderStep.getPosition();     // Store for next time
+    return true;
+  }
+  return false;
+}
+
+/////////////////////////// Fixed frequency select ////////////////////////////
+bool fixfrq_select()
 {
   unsigned long pressedTime;
 
-  if (digitalRead(switch1) == LOW)
+  if (digitalRead(switchFreq) == LOW)
   { pressedTime = millis();
-    while (digitalRead(switch1) == LOW) {
+    while (digitalRead(switchFreq) == LOW) {
       delay(10);
-    };      // Wait for release
+    }; // Wait for release
     if ((millis() - pressedTime) > 500) {                  // Long press delay
-      digitalWrite(longPress1, !digitalRead(longPress1));;     // Invert output
+      digitalWrite(encoderFrequencyButton, !digitalRead(encoderFrequencyButton));;     // Invert output
     } else {
       Freq = freqPresets[cnt_fix++];
       if (cnt_fix >= (sizeof(freqPresets) / sizeof(freqPresets[0]))) {
@@ -670,21 +656,23 @@ void fixfrq_select()
       }
       delay(300);
     }
+    return true;
   }
+  return false;
 }
 
-////////////////////////////////// Subroutine: Power select ///////////////////////////////
-void pwr_select()
+////////////////////////////////// Power select ///////////////////////////////
+bool pwr_select()
 {
   unsigned long pressedTime;
 
-  if (digitalRead(switch2) == LOW)
+  if (digitalRead(switchStep) == LOW)
   { pressedTime = millis();
-    while (digitalRead(switch2) == LOW) {
+    while (digitalRead(switchStep) == LOW) {
       delay(10);
     };      // Wait for release
     if ((millis() - pressedTime) > 500) {                  // Long press delay
-      digitalWrite(longPress2, !digitalRead(longPress2));;     // Invert output
+      digitalWrite(encoderStepButton, !digitalRead(encoderStepButton));;     // Invert output
     } else {
       dbm++;
       if (dbm >= 4) {
@@ -692,10 +680,13 @@ void pwr_select()
       }
       delay(300);
     }
+    return true;
   }
+  return false;
 }
-//////////////////////////////////////////////////////////////////////////////////////
 
+
+//////////////////////////// Float to string //////////////////////////////////////////////////////////
 // See https://forum.arduino.cc/index.php/topic,37391.0.html#12
 char * floatToString(char * outstr, double val, byte precision, byte widthp) {
   char temp[16];
